@@ -1,0 +1,178 @@
+from sqlalchemy import Column, String, DateTime, Enum as SQLEnum, JSON, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from app.database import Base
+import enum
+
+
+class ContractorStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PENDING_DOCUMENTS = "pending_documents"
+    DOCUMENTS_UPLOADED = "documents_uploaded"
+    PENDING_REVIEW = "pending_review"
+    APPROVED = "approved"
+    PENDING_SIGNATURE = "pending_signature"
+    SIGNED = "signed"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
+
+class SignatureType(str, enum.Enum):
+    TYPED = "typed"
+    DRAWN = "drawn"
+
+
+class Contractor(Base):
+    """Contractor model for contractor management"""
+    __tablename__ = "contractors"
+
+    # Primary Key
+    id = Column(String, primary_key=True, index=True)
+
+    # Status & Workflow
+    status = Column(SQLEnum(ContractorStatus), nullable=False, default=ContractorStatus.DRAFT)
+    contract_token = Column(String, unique=True, nullable=True, index=True)
+    signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    signature_data = Column(Text, nullable=True)  # Name for typed, base64 for drawn
+    sent_date = Column(DateTime(timezone=True), nullable=True)
+    signed_date = Column(DateTime(timezone=True), nullable=True)
+    activated_date = Column(DateTime(timezone=True), nullable=True)
+    token_expiry = Column(DateTime(timezone=True), nullable=True)
+
+    # Document Upload Workflow
+    document_upload_token = Column(String, unique=True, nullable=True, index=True)
+    document_token_expiry = Column(DateTime(timezone=True), nullable=True)
+    documents_uploaded_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Uploaded Documents (file paths or URLs)
+    passport_document = Column(String, nullable=True)
+    photo_document = Column(String, nullable=True)
+    visa_page_document = Column(String, nullable=True)
+    emirates_id_document = Column(String, nullable=True)
+    degree_document = Column(String, nullable=True)
+    other_documents = Column(JSON, nullable=True)  # Array of additional documents
+
+    # Superadmin Signature
+    superadmin_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    superadmin_signature_data = Column(Text, nullable=True)  # Name for typed, base64 for drawn
+
+    # Review & Approval Tracking
+    reviewed_date = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(String, nullable=True)  # User ID of admin/superadmin who reviewed
+    approved_date = Column(DateTime(timezone=True), nullable=True)
+    approved_by = Column(String, nullable=True)  # User ID of admin/superadmin who approved
+
+    # Consultant Tracking
+    consultant_id = Column(String, nullable=True)  # User ID of consultant who created
+    consultant_name = Column(String, nullable=True)
+
+    # Costing Sheet Data (filled by consultant)
+    costing_sheet_data = Column(JSON, nullable=True)
+
+    # Personal Details
+    first_name = Column(String, nullable=False)
+    surname = Column(String, nullable=False)
+    gender = Column(String, nullable=False)  # "Male" or "Female"
+    nationality = Column(String, nullable=False)
+    home_address = Column(String, nullable=False)
+    address_line3 = Column(String, nullable=True)
+    address_line4 = Column(String, nullable=True)
+    phone = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    dob = Column(String, nullable=False)
+
+    # Management Company
+    business_type = Column(String, nullable=True)  # "3RD Party", "Freelancer", "Aventus"
+    third_party_id = Column(String, nullable=True)  # ID of third party company if business_type is "3RD Party"
+    umbrella_company_name = Column(String, nullable=True)
+    registered_address = Column(String, nullable=True)
+    management_address_line2 = Column(String, nullable=True)
+    management_address_line3 = Column(String, nullable=True)
+    company_vat_no = Column(String, nullable=True)
+    company_name = Column(String, nullable=True)
+    account_number = Column(String, nullable=True)
+    iban_number = Column(String, nullable=True)
+    company_reg_no = Column(String, nullable=True)
+
+    # Placement Details
+    client_name = Column(String, nullable=True)
+    project_name = Column(String, nullable=True)
+    role = Column(String, nullable=True)
+    start_date = Column(String, nullable=True)
+    end_date = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    duration = Column(String, nullable=True)
+    currency = Column(String, nullable=False, default="AED")
+    client_charge_rate = Column(String, nullable=True)
+    candidate_pay_rate = Column(String, nullable=True)
+    candidate_basic_salary = Column(String, nullable=True)
+    contractor_costs = Column(String, nullable=True)
+
+    # Monthly Costs
+    management_company_charges = Column(String, nullable=True)
+    taxes = Column(String, nullable=True)
+    bank_fees = Column(String, nullable=True)
+    fx = Column(String, nullable=True)
+    nationalisation = Column(String, nullable=True)
+
+    # Provisions
+    eosb = Column(String, nullable=True)
+    vacation_pay = Column(String, nullable=True)
+    sick_leave = Column(String, nullable=True)
+    other_provision = Column(String, nullable=True)
+
+    # One Time Costs
+    flights = Column(String, nullable=True)
+    visa = Column(String, nullable=True)
+    medical_insurance = Column(String, nullable=True)
+    family_costs = Column(String, nullable=True)
+    other_one_time_costs = Column(String, nullable=True)
+
+    # Additional Info
+    upfront_invoices = Column(String, nullable=True)
+    security_deposit = Column(String, nullable=True)
+    laptop_provider = Column(String, nullable=True)
+    other_notes = Column(Text, nullable=True)
+
+    # Aventus Deal
+    consultant = Column(String, nullable=True)
+    any_splits = Column(String, nullable=True)
+    resourcer = Column(String, nullable=True)
+
+    # Invoice Details
+    timesheet_required = Column(String, nullable=True)
+    timesheet_approver_name = Column(String, nullable=True)
+    invoice_email = Column(String, nullable=True)
+    client_contact = Column(String, nullable=True)
+    invoice_address_line1 = Column(String, nullable=True)
+    invoice_address_line2 = Column(String, nullable=True)
+    invoice_address_line3 = Column(String, nullable=True)
+    invoice_address_line4 = Column(String, nullable=True)
+    invoice_po_box = Column(String, nullable=True)
+    invoice_tax_number = Column(String, nullable=True)
+    contractor_pay_frequency = Column(String, nullable=True)
+    client_invoice_frequency = Column(String, nullable=True)
+    client_payment_terms = Column(String, nullable=True)
+    invoicing_preferences = Column(String, nullable=True)
+    invoice_instructions = Column(Text, nullable=True)
+    supporting_docs_required = Column(String, nullable=True)
+    po_required = Column(String, nullable=True)
+    po_number = Column(String, nullable=True)
+
+    # Pay Details
+    umbrella_or_direct = Column(String, nullable=True)
+    candidate_bank_details = Column(String, nullable=True)
+    candidate_iban = Column(String, nullable=True)
+
+    # CDS Form Data (Step 2) - Stored as JSON for flexibility
+    cds_form_data = Column(JSON, nullable=True)
+
+    # Generated Contract
+    generated_contract = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    timesheets = relationship("Timesheet", back_populates="contractor")

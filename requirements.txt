@@ -1,0 +1,37 @@
+# FastAPI and Server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+alembic
+psycopg2-binary
+
+# Authentication
+python-jose
+passlib[bcrypt]
+python-dotenv
+pydantic
+pydantic-settings
+
+# Cryptography
+cryptography
+
+# Email
+resend
+
+# PDF Generation
+reportlab
+
+# Utilities
+python-dateutil
+jinja2
+email-validator
+
+# Supabase Storage
+supabase
+
+# Testing
+pytest
+pytest-cov

@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python add_document_workflow_columns.py:*)",
+      "Bash(python update_contractor_status_enum.py:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(timeout:*)",
+      "Bash(echo:*)",
+      "Bash(update_contractor_status_enum.py)",
+      "Bash(python -c:*)",
+      "Bash(pip install:*)",
+      "Bash(cmd //c \"taskkill /F /PID 20728\")",
+      "Bash(cmd //c \"taskkill /F /PID 23108\")",
+      "Bash(cmd //c \"taskkill /F /PID 7672\")",
+      "Bash(cmd //c \"taskkill /F /IM python.exe\")",
+      "Bash(dir /b:*)",
+      "Bash(dir:*)",
+      "Bash(cmd //c \"taskkill /F /PID 27064\")",
+      "Bash(python run.py:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(ping:*)",
+      "Bash(nul)",
+      "Bash(cmd //c \"taskkill /F /PID 30752\")",
+      "Bash(cmd //c:*)",
+      "Bash(cmd /c \"taskkill /F /PID 5720 & taskkill /F /PID 17360\")",
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(.gitignore)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
