@@ -199,12 +199,18 @@ class ContractorResponse(BaseModel):
     passport_document: Optional[str] = None
     photo_document: Optional[str] = None
     visa_page_document: Optional[str] = None
+    id_front_document: Optional[str] = None
+    id_back_document: Optional[str] = None
     emirates_id_document: Optional[str] = None
     degree_document: Optional[str] = None
+    third_party_document: Optional[str] = None
     other_documents: Optional[Dict[str, Any]] = None
 
     # Costing sheet data for checking if CDS is completed
     costing_sheet_data: Optional[Dict[str, Any]] = None
+
+    # Onboarding route
+    onboarding_route: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -254,8 +260,11 @@ class ContractorDetailResponse(BaseModel):
     passport_document: Optional[str] = None
     photo_document: Optional[str] = None
     visa_page_document: Optional[str] = None
+    id_front_document: Optional[str] = None
+    id_back_document: Optional[str] = None
     emirates_id_document: Optional[str] = None
     degree_document: Optional[str] = None
+    third_party_document: Optional[str] = None
     other_documents: Optional[Dict[str, Any]] = None
 
     # Superadmin signature
@@ -285,6 +294,12 @@ class ContractorDetailResponse(BaseModel):
     approved_date: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    # Onboarding route
+    onboarding_route: Optional[str] = None
+
+    # Costing sheet data
+    costing_sheet_data: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
