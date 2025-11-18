@@ -457,168 +457,168 @@ async def submit_cds_form(
     # Extract nested data object if it exists
     form_data = cds_data.get('data', cds_data)
 
-    # Update personal details
-    if form_data.get('firstName'):
+    # Update personal details (update even if empty to allow clearing fields)
+    if 'firstName' in form_data:
         contractor.first_name = form_data['firstName']
-    if form_data.get('surname'):
+    if 'surname' in form_data:
         contractor.surname = form_data['surname']
-    if form_data.get('gender'):
+    if 'gender' in form_data:
         contractor.gender = form_data['gender']
-    if form_data.get('nationality'):
+    if 'nationality' in form_data:
         contractor.nationality = form_data['nationality']
-    if form_data.get('homeAddress'):
+    if 'homeAddress' in form_data:
         contractor.home_address = form_data['homeAddress']
-    if form_data.get('addressLine3'):
+    if 'addressLine3' in form_data:
         contractor.address_line3 = form_data['addressLine3']
-    if form_data.get('addressLine4'):
+    if 'addressLine4' in form_data:
         contractor.address_line4 = form_data['addressLine4']
-    if form_data.get('phone'):
+    if 'phone' in form_data:
         contractor.phone = form_data['phone']
-    if form_data.get('email'):
+    if 'email' in form_data:
         contractor.email = form_data['email']
-    if form_data.get('dob'):
+    if 'dob' in form_data:
         contractor.dob = form_data['dob']
 
     # Update management company details
-    if form_data.get('businessType'):
+    if 'businessType' in form_data:
         contractor.business_type = form_data['businessType']
-    if form_data.get('thirdPartyId'):
+    if 'thirdPartyId' in form_data:
         contractor.third_party_id = form_data['thirdPartyId']
-    if form_data.get('umbrellaCompanyName'):
+    if 'umbrellaCompanyName' in form_data:
         contractor.umbrella_company_name = form_data['umbrellaCompanyName']
-    if form_data.get('registeredAddress'):
+    if 'registeredAddress' in form_data:
         contractor.registered_address = form_data['registeredAddress']
-    if form_data.get('companyVATNo'):
+    if 'companyVATNo' in form_data:
         contractor.company_vat_no = form_data['companyVATNo']
-    if form_data.get('companyName'):
+    if 'companyName' in form_data:
         contractor.company_name = form_data['companyName']
-    if form_data.get('accountNumber'):
+    if 'accountNumber' in form_data:
         contractor.account_number = form_data['accountNumber']
-    if form_data.get('ibanNumber'):
+    if 'ibanNumber' in form_data:
         contractor.iban_number = form_data['ibanNumber']
-    if form_data.get('companyRegNo'):
+    if 'companyRegNo' in form_data:
         contractor.company_reg_no = form_data['companyRegNo']
 
     # Update placement details
-    if form_data.get('clientName'):
+    if 'clientName' in form_data:
         contractor.client_name = form_data['clientName']
-    if form_data.get('projectName'):
+    if 'projectName' in form_data:
         contractor.project_name = form_data['projectName']
-    if form_data.get('role'):
+    if 'role' in form_data:
         contractor.role = form_data['role']
-    if form_data.get('startDate'):
+    if 'startDate' in form_data:
         contractor.start_date = form_data['startDate']
-    if form_data.get('endDate'):
+    if 'endDate' in form_data:
         contractor.end_date = form_data['endDate']
-    if form_data.get('location'):
+    if 'location' in form_data:
         contractor.location = form_data['location']
-    if form_data.get('duration'):
+    if 'duration' in form_data:
         contractor.duration = form_data['duration']
-    if form_data.get('currency'):
+    if 'currency' in form_data:
         contractor.currency = form_data['currency']
-    if form_data.get('clientChargeRate'):
+    if 'clientChargeRate' in form_data:
         contractor.client_charge_rate = form_data['clientChargeRate']
-    if form_data.get('candidatePayRate'):
+    if 'candidatePayRate' in form_data:
         contractor.candidate_pay_rate = form_data['candidatePayRate']
-    if form_data.get('candidateBasicSalary'):
+    if 'candidateBasicSalary' in form_data:
         contractor.candidate_basic_salary = form_data['candidateBasicSalary']
 
     # Update monthly costs
-    if form_data.get('managementCompanyCharges'):
+    if 'managementCompanyCharges' in form_data:
         contractor.management_company_charges = form_data['managementCompanyCharges']
-    if form_data.get('taxes'):
+    if 'taxes' in form_data:
         contractor.taxes = form_data['taxes']
-    if form_data.get('bankFees'):
+    if 'bankFees' in form_data:
         contractor.bank_fees = form_data['bankFees']
-    if form_data.get('fx'):
+    if 'fx' in form_data:
         contractor.fx = form_data['fx']
-    if form_data.get('nationalisation'):
+    if 'nationalisation' in form_data:
         contractor.nationalisation = form_data['nationalisation']
 
     # Update provisions
-    if form_data.get('eosb'):
+    if 'eosb' in form_data:
         contractor.eosb = form_data['eosb']
-    if form_data.get('vacationPay'):
+    if 'vacationPay' in form_data:
         contractor.vacation_pay = form_data['vacationPay']
-    if form_data.get('sickLeave'):
+    if 'sickLeave' in form_data:
         contractor.sick_leave = form_data['sickLeave']
-    if form_data.get('otherProvision'):
+    if 'otherProvision' in form_data:
         contractor.other_provision = form_data['otherProvision']
 
     # Update one-time costs
-    if form_data.get('flights'):
+    if 'flights' in form_data:
         contractor.flights = form_data['flights']
-    if form_data.get('visa'):
+    if 'visa' in form_data:
         contractor.visa = form_data['visa']
-    if form_data.get('medicalInsurance'):
+    if 'medicalInsurance' in form_data:
         contractor.medical_insurance = form_data['medicalInsurance']
-    if form_data.get('familyCosts'):
+    if 'familyCosts' in form_data:
         contractor.family_costs = form_data['familyCosts']
-    if form_data.get('otherOneTimeCosts'):
+    if 'otherOneTimeCosts' in form_data:
         contractor.other_one_time_costs = form_data['otherOneTimeCosts']
 
     # Update additional info
-    if form_data.get('upfrontInvoices'):
+    if 'upfrontInvoices' in form_data:
         contractor.upfront_invoices = form_data['upfrontInvoices']
-    if form_data.get('securityDeposit'):
+    if 'securityDeposit' in form_data:
         contractor.security_deposit = form_data['securityDeposit']
-    if form_data.get('laptopProvider'):
+    if 'laptopProvider' in form_data:
         contractor.laptop_provider = form_data['laptopProvider']
-    if form_data.get('otherNotes'):
+    if 'otherNotes' in form_data:
         contractor.other_notes = form_data['otherNotes']
 
     # Update Aventus Deal details
-    if form_data.get('consultant'):
+    if 'consultant' in form_data:
         contractor.consultant = form_data['consultant']
-    if form_data.get('anySplits'):
+    if 'anySplits' in form_data:
         contractor.any_splits = form_data['anySplits']
-    if form_data.get('resourcer'):
+    if 'resourcer' in form_data:
         contractor.resourcer = form_data['resourcer']
 
     # Update invoice details
-    if form_data.get('timesheetRequired'):
+    if 'timesheetRequired' in form_data:
         contractor.timesheet_required = form_data['timesheetRequired']
-    if form_data.get('timesheetApproverName'):
+    if 'timesheetApproverName' in form_data:
         contractor.timesheet_approver_name = form_data['timesheetApproverName']
-    if form_data.get('invoiceEmail'):
+    if 'invoiceEmail' in form_data:
         contractor.invoice_email = form_data['invoiceEmail']
-    if form_data.get('clientContact'):
+    if 'clientContact' in form_data:
         contractor.client_contact = form_data['clientContact']
-    if form_data.get('invoiceAddressLine1'):
+    if 'invoiceAddressLine1' in form_data:
         contractor.invoice_address_line1 = form_data['invoiceAddressLine1']
-    if form_data.get('invoiceAddressLine2'):
+    if 'invoiceAddressLine2' in form_data:
         contractor.invoice_address_line2 = form_data['invoiceAddressLine2']
-    if form_data.get('invoiceAddressLine3'):
+    if 'invoiceAddressLine3' in form_data:
         contractor.invoice_address_line3 = form_data['invoiceAddressLine3']
-    if form_data.get('invoiceAddressLine4'):
+    if 'invoiceAddressLine4' in form_data:
         contractor.invoice_address_line4 = form_data['invoiceAddressLine4']
-    if form_data.get('invoicePOBox'):
+    if 'invoicePOBox' in form_data:
         contractor.invoice_po_box = form_data['invoicePOBox']
-    if form_data.get('invoiceTaxNumber'):
+    if 'invoiceTaxNumber' in form_data:
         contractor.invoice_tax_number = form_data['invoiceTaxNumber']
-    if form_data.get('contractorPayFrequency'):
+    if 'contractorPayFrequency' in form_data:
         contractor.contractor_pay_frequency = form_data['contractorPayFrequency']
-    if form_data.get('clientInvoiceFrequency'):
+    if 'clientInvoiceFrequency' in form_data:
         contractor.client_invoice_frequency = form_data['clientInvoiceFrequency']
-    if form_data.get('clientPaymentTerms'):
+    if 'clientPaymentTerms' in form_data:
         contractor.client_payment_terms = form_data['clientPaymentTerms']
-    if form_data.get('invoicingPreferences'):
+    if 'invoicingPreferences' in form_data:
         contractor.invoicing_preferences = form_data['invoicingPreferences']
-    if form_data.get('invoiceInstructions'):
+    if 'invoiceInstructions' in form_data:
         contractor.invoice_instructions = form_data['invoiceInstructions']
-    if form_data.get('supportingDocsRequired'):
+    if 'supportingDocsRequired' in form_data:
         contractor.supporting_docs_required = form_data['supportingDocsRequired']
-    if form_data.get('poRequired'):
+    if 'poRequired' in form_data:
         contractor.po_required = form_data['poRequired']
-    if form_data.get('poNumber'):
+    if 'poNumber' in form_data:
         contractor.po_number = form_data['poNumber']
 
     # Update pay details
-    if form_data.get('umbrellaOrDirect'):
+    if 'umbrellaOrDirect' in form_data:
         contractor.umbrella_or_direct = form_data['umbrellaOrDirect']
-    if form_data.get('candidateBankDetails'):
+    if 'candidateBankDetails' in form_data:
         contractor.candidate_bank_details = form_data['candidateBankDetails']
-    if form_data.get('candidateIBAN'):
+    if 'candidateIBAN' in form_data:
         contractor.candidate_iban = form_data['candidateIBAN']
 
     # Keep status as DOCUMENTS_UPLOADED - don't change it yet
