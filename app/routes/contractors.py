@@ -848,6 +848,53 @@ async def approve_contractor(
     }
 
 
+@router.post("/{contractor_id}/recall")
+async def recall_contractor_for_editing(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Recall a contractor from pending_review status back to documents_uploaded
+    to allow consultant to make changes and resubmit
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check status - can only recall from pending_review
+    if contractor.status != ContractorStatus.PENDING_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only recall contractors that are pending review"
+        )
+
+    # Only allow consultant to recall their own contractors (or admin/superadmin)
+    if current_user.role == UserRole.CONSULTANT and contractor.consultant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only recall your own contractors"
+        )
+
+    # Change status back to documents_uploaded
+    contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
+    contractor.reviewed_date = None  # Clear review date since it's being recalled
+    contractor.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Contractor recalled for editing. You can now make changes and resubmit.",
+        "contractor_id": contractor.id,
+        "status": contractor.status
+    }
+
+
 @router.get("/token/{token}/pdf")
 async def get_contract_pdf(
     token: str,
