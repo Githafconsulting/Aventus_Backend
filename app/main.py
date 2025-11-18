@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routes import auth, contractors, third_parties, timesheets
+from app.routes import auth, contractors, third_parties, timesheets, clients, contracts, work_orders, templates, quote_sheets, proposals
 from app.database import engine, Base
 
 # Create database tables
@@ -37,6 +37,12 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(contractors.router, prefix="/api/v1")
 app.include_router(third_parties.router)
 app.include_router(timesheets.router, prefix="/api/v1")
+app.include_router(clients.router)  # Already has /api/v1/clients prefix
+app.include_router(contracts.router, prefix="/api/v1")  # Has /contracts prefix
+app.include_router(work_orders.router)  # Already has /api/v1/work-orders prefix
+app.include_router(templates.router)  # Already has /api/v1/templates prefix
+app.include_router(quote_sheets.router)  # Already has /api/v1/quote-sheets prefix
+app.include_router(proposals.router)  # Already has /api/v1/proposals prefix
 
 
 @app.get("/")

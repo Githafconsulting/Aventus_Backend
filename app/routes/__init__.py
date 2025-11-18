@@ -1,3 +1,3 @@
-from app.routes import auth, contractors
+from app.routes import auth, contractors, third_parties, timesheets, clients, contracts, work_orders, templates, quote_sheets, proposals
 
-__all__ = ["auth", "contractors"]
+__all__ = ["auth", "contractors", "third_parties", "timesheets", "clients", "contracts", "work_orders", "templates", "quote_sheets", "proposals"]

@@ -9,6 +9,17 @@ class ContractorUpdate(BaseModel):
     surname: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+
+    # Cost of Hire fields
+    recruitment_cost: Optional[str] = None
+    onboarding_cost: Optional[str] = None
+    equipment_cost: Optional[str] = None
+    administrative_cost: Optional[str] = None
+    relocation_cost: Optional[str] = None
+    total_cost_of_hire: Optional[str] = None
+    cost_of_hire_notes: Optional[str] = None
+    cost_breakdown: Optional[Dict[str, Any]] = None
+
     # Add other fields as needed
 
 
@@ -110,10 +121,30 @@ class CostingSheetData(BaseModel):
 
 
 class DocumentUploadData(BaseModel):
-    """Schema for document uploads by contractor"""
+    """Schema for document uploads and personal information by contractor"""
+    # Personal Information
+    first_name: str
+    surname: str
+    email: EmailStr
+    gender: str
+    dob: str
+    nationality: str
+    marital_status: Optional[str] = None
+    number_of_children: Optional[str] = None
+    phone: str
+    home_address: str
+    address_line2: Optional[str] = None
+    address_line3: Optional[str] = None
+    address_line4: Optional[str] = None
+    candidate_bank_details: Optional[str] = None
+    candidate_iban: Optional[str] = None
+
+    # Documents (handled as file uploads in the route)
     passport_document: Optional[str] = None  # base64 or file path
     photo_document: Optional[str] = None
     visa_page_document: Optional[str] = None
+    id_front_document: Optional[str] = None
+    id_back_document: Optional[str] = None
     emirates_id_document: Optional[str] = None
     degree_document: Optional[str] = None
     other_documents: Optional[List[Dict[str, str]]] = None  # [{"name": "...", "data": "..."}]
@@ -179,6 +210,18 @@ class ContractorResponse(BaseModel):
         from_attributes = True
 
 
+class RouteSelection(BaseModel):
+    """Schema for selecting onboarding route"""
+    route: str  # "wps_freelancer" or "third_party"
+
+
+class ThirdPartyRequest(BaseModel):
+    """Schema for sending third party request"""
+    third_party_id: str
+    email_subject: str
+    email_body: str
+
+
 class ContractorDetailResponse(BaseModel):
     """Schema for detailed contractor response"""
     id: str
@@ -222,6 +265,16 @@ class ContractorDetailResponse(BaseModel):
     # Consultant info
     consultant_id: Optional[str] = None
     consultant_name: Optional[str] = None
+
+    # Cost of Hire
+    recruitment_cost: Optional[str] = None
+    onboarding_cost: Optional[str] = None
+    equipment_cost: Optional[str] = None
+    administrative_cost: Optional[str] = None
+    relocation_cost: Optional[str] = None
+    total_cost_of_hire: Optional[str] = None
+    cost_of_hire_notes: Optional[str] = None
+    cost_breakdown: Optional[Dict[str, Any]] = None
 
     # Dates
     sent_date: Optional[datetime] = None

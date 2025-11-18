@@ -9,12 +9,19 @@ class ContractorStatus(str, enum.Enum):
     DRAFT = "draft"
     PENDING_DOCUMENTS = "pending_documents"
     DOCUMENTS_UPLOADED = "documents_uploaded"
+    PENDING_THIRD_PARTY_RESPONSE = "pending_third_party_response"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
+    REJECTED = "rejected"
     PENDING_SIGNATURE = "pending_signature"
     SIGNED = "signed"
     ACTIVE = "active"
     SUSPENDED = "suspended"
+
+
+class OnboardingRoute(str, enum.Enum):
+    WPS_FREELANCER = "wps_freelancer"
+    THIRD_PARTY = "third_party"
 
 
 class SignatureType(str, enum.Enum):
@@ -31,6 +38,7 @@ class Contractor(Base):
 
     # Status & Workflow
     status = Column(SQLEnum(ContractorStatus), nullable=False, default=ContractorStatus.DRAFT)
+    onboarding_route = Column(SQLEnum(OnboardingRoute), nullable=True)  # WPS/Freelancer or Third Party
     contract_token = Column(String, unique=True, nullable=True, index=True)
     signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     signature_data = Column(Text, nullable=True)  # Name for typed, base64 for drawn
@@ -38,6 +46,12 @@ class Contractor(Base):
     signed_date = Column(DateTime(timezone=True), nullable=True)
     activated_date = Column(DateTime(timezone=True), nullable=True)
     token_expiry = Column(DateTime(timezone=True), nullable=True)
+
+    # Third Party Route Data
+    third_party_company_id = Column(String, nullable=True)  # ID of selected third party
+    third_party_email_sent_date = Column(DateTime(timezone=True), nullable=True)
+    third_party_response_received_date = Column(DateTime(timezone=True), nullable=True)
+    third_party_document = Column(String, nullable=True)  # Path to uploaded 3rd party document
 
     # Document Upload Workflow
     document_upload_token = Column(String, unique=True, nullable=True, index=True)
@@ -48,6 +62,8 @@ class Contractor(Base):
     passport_document = Column(String, nullable=True)
     photo_document = Column(String, nullable=True)
     visa_page_document = Column(String, nullable=True)
+    id_front_document = Column(String, nullable=True)
+    id_back_document = Column(String, nullable=True)
     emirates_id_document = Column(String, nullable=True)
     degree_document = Column(String, nullable=True)
     other_documents = Column(JSON, nullable=True)  # Array of additional documents
@@ -74,7 +90,10 @@ class Contractor(Base):
     surname = Column(String, nullable=False)
     gender = Column(String, nullable=False)  # "Male" or "Female"
     nationality = Column(String, nullable=False)
+    marital_status = Column(String, nullable=True)  # "Single", "Married", "Divorced", "Widowed"
+    number_of_children = Column(String, nullable=True)
     home_address = Column(String, nullable=False)
+    address_line2 = Column(String, nullable=True)
     address_line3 = Column(String, nullable=True)
     address_line4 = Column(String, nullable=True)
     phone = Column(String, nullable=False)
@@ -176,3 +195,4 @@ class Contractor(Base):
 
     # Relationships
     timesheets = relationship("Timesheet", back_populates="contractor")
+    contracts = relationship("Contract", back_populates="contractor")

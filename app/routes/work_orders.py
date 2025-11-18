@@ -1,0 +1,316 @@
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from app.database import get_db
+from app.models.work_order import WorkOrder, WorkOrderStatus
+from app.models.contractor import Contractor
+from app.models.third_party import ThirdParty
+from app.schemas.work_order import WorkOrderCreate, WorkOrderUpdate, WorkOrderResponse
+from app.models.user import User, UserRole
+from app.utils.auth import get_current_active_user, require_role
+from app.utils.storage import storage
+from datetime import datetime
+import uuid
+
+router = APIRouter(prefix="/api/v1/work-orders", tags=["work-orders"])
+
+
+def generate_work_order_number(db: Session) -> str:
+    """Generate unique work order number like WO-2024-001"""
+    year = datetime.utcnow().year
+
+    # Get the count of work orders created this year
+    count = db.query(WorkOrder).filter(
+        WorkOrder.work_order_number.like(f"WO-{year}-%")
+    ).count()
+
+    next_number = count + 1
+    return f"WO-{year}-{next_number:03d}"
+
+
+@router.post("/", response_model=WorkOrderResponse, status_code=status.HTTP_201_CREATED)
+async def create_work_order(
+    work_order_data: WorkOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Create a new work order
+    """
+    # Verify contractor exists
+    contractor = db.query(Contractor).filter(Contractor.id == work_order_data.contractor_id).first()
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Verify third party exists if provided
+    if work_order_data.third_party_id:
+        third_party = db.query(ThirdParty).filter(ThirdParty.id == work_order_data.third_party_id).first()
+        if not third_party:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Third party not found"
+            )
+
+    # Generate work order number
+    work_order_number = generate_work_order_number(db)
+
+    # Create work order
+    work_order_dict = work_order_data.model_dump()
+    work_order = WorkOrder(
+        **work_order_dict,
+        work_order_number=work_order_number,
+        created_by=current_user.id
+    )
+
+    db.add(work_order)
+    db.commit()
+    db.refresh(work_order)
+
+    return work_order
+
+
+@router.get("/", response_model=List[WorkOrderResponse])
+async def get_work_orders(
+    status_filter: Optional[WorkOrderStatus] = None,
+    contractor_id: Optional[str] = None,
+    third_party_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get all work orders with optional filters
+    """
+    query = db.query(WorkOrder)
+
+    if status_filter:
+        query = query.filter(WorkOrder.status == status_filter)
+
+    if contractor_id:
+        query = query.filter(WorkOrder.contractor_id == contractor_id)
+
+    if third_party_id:
+        query = query.filter(WorkOrder.third_party_id == third_party_id)
+
+    work_orders = query.order_by(WorkOrder.created_at.desc()).all()
+    return work_orders
+
+
+@router.get("/{work_order_id}", response_model=WorkOrderResponse)
+async def get_work_order(
+    work_order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get a specific work order by ID
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    return work_order
+
+
+@router.put("/{work_order_id}", response_model=WorkOrderResponse)
+async def update_work_order(
+    work_order_id: str,
+    work_order_data: WorkOrderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update a work order
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    # Verify contractor exists if being updated
+    if work_order_data.contractor_id:
+        contractor = db.query(Contractor).filter(Contractor.id == work_order_data.contractor_id).first()
+        if not contractor:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Contractor not found"
+            )
+
+    # Verify third party exists if being updated
+    if work_order_data.third_party_id:
+        third_party = db.query(ThirdParty).filter(ThirdParty.id == work_order_data.third_party_id).first()
+        if not third_party:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Third party not found"
+            )
+
+    # Update fields
+    update_data = work_order_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(work_order, field, value)
+
+    db.commit()
+    db.refresh(work_order)
+
+    return work_order
+
+
+@router.delete("/{work_order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_work_order(
+    work_order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+):
+    """
+    Delete a work order (Admin/Superadmin only)
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    db.delete(work_order)
+    db.commit()
+
+    return None
+
+
+@router.post("/{work_order_id}/upload-document")
+async def upload_work_order_document(
+    work_order_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Upload a document for a work order
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    # Upload file to storage
+    try:
+        # Generate unique filename
+        file_ext = file.filename.split('.')[-1] if '.' in file.filename else ''
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"work-orders/{work_order_id}/{document_type}_{timestamp}_{unique_id}.{file_ext}"
+
+        # Read file content
+        content = await file.read()
+
+        # Upload to Supabase Storage
+        response = storage.client.storage.from_(storage.bucket).upload(
+            filename,
+            content,
+            file_options={"content-type": file.content_type}
+        )
+
+        # Get public URL
+        file_url = storage.client.storage.from_(storage.bucket).get_public_url(filename)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload document: {str(e)}"
+        )
+
+    # Get existing documents or initialize empty list
+    documents = work_order.documents if work_order.documents else []
+
+    # Add new document
+    documents.append({
+        "type": document_type,
+        "filename": file.filename,
+        "url": file_url,
+        "uploaded_at": datetime.utcnow().isoformat()
+    })
+
+    # Update work order with new document
+    work_order.documents = documents
+    db.commit()
+    db.refresh(work_order)
+
+    return {"message": "Document uploaded successfully", "url": file_url}
+
+
+@router.delete("/{work_order_id}/documents/{document_index}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_work_order_document(
+    work_order_id: str,
+    document_index: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Delete a document from a work order
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    if not work_order.documents or document_index >= len(work_order.documents):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Remove document from list
+    documents = work_order.documents
+    documents.pop(document_index)
+    work_order.documents = documents
+
+    db.commit()
+
+    return None
+
+
+@router.patch("/{work_order_id}/status", response_model=WorkOrderResponse)
+async def update_work_order_status(
+    work_order_id: str,
+    new_status: WorkOrderStatus,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update work order status
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    # If status is being changed to APPROVED, set approved_by
+    if new_status == WorkOrderStatus.APPROVED and work_order.status != WorkOrderStatus.APPROVED:
+        work_order.approved_by = current_user.id
+
+    work_order.status = new_status
+    db.commit()
+    db.refresh(work_order)
+
+    return work_order

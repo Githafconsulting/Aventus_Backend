@@ -1,11 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from app.database import get_db
 from app.models.third_party import ThirdParty
 from app.schemas.third_party import ThirdPartyCreate, ThirdPartyUpdate, ThirdPartyResponse
 from app.models.user import User, UserRole
 from app.utils.auth import get_current_active_user, require_role
+from app.utils.storage import storage
+from datetime import datetime
+import uuid
 
 router = APIRouter(prefix="/api/v1/third-parties", tags=["third-parties"])
 
@@ -132,6 +135,105 @@ async def delete_third_party(
         )
 
     db.delete(third_party)
+    db.commit()
+
+    return None
+
+
+@router.post("/{third_party_id}/upload-document")
+async def upload_third_party_document(
+    third_party_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+):
+    """
+    Upload a document for a third party company (Admin/Superadmin only)
+    """
+    third_party = db.query(ThirdParty).filter(ThirdParty.id == third_party_id).first()
+
+    if not third_party:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Third party company not found"
+        )
+
+    # Upload file to storage using custom approach for third parties
+    try:
+        # Generate unique filename
+        file_ext = file.filename.split('.')[-1] if '.' in file.filename else ''
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"third-parties/{third_party_id}/{document_type}_{timestamp}_{unique_id}.{file_ext}"
+
+        # Read file content
+        content = await file.read()
+
+        # Upload to Supabase Storage
+        response = storage.client.storage.from_(storage.bucket).upload(
+            filename,
+            content,
+            file_options={"content-type": file.content_type}
+        )
+
+        # Get public URL
+        file_url = storage.client.storage.from_(storage.bucket).get_public_url(filename)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload document: {str(e)}"
+        )
+
+    # Get existing documents or initialize empty list
+    documents = third_party.documents if third_party.documents else []
+
+    # Add new document
+    documents.append({
+        "type": document_type,
+        "filename": file.filename,
+        "url": file_url,
+        "uploaded_at": datetime.utcnow().isoformat()
+    })
+
+    # Update third party with new document
+    third_party.documents = documents
+    db.commit()
+    db.refresh(third_party)
+
+    return {"message": "Document uploaded successfully", "url": file_url}
+
+
+@router.delete("/{third_party_id}/documents/{document_index}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_third_party_document(
+    third_party_id: str,
+    document_index: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+):
+    """
+    Delete a document from a third party company (Admin/Superadmin only)
+    """
+    third_party = db.query(ThirdParty).filter(ThirdParty.id == third_party_id).first()
+
+    if not third_party:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Third party company not found"
+        )
+
+    if not third_party.documents or document_index >= len(third_party.documents):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # Remove document from list
+    documents = third_party.documents
+    documents.pop(document_index)
+    third_party.documents = documents
+
     db.commit()
 
     return None
