@@ -1236,10 +1236,10 @@ async def get_contractor_documents(
             "uploaded_date": contractor.documents_uploaded_date
         })
 
-    # Add third party document if available
+    # Add third party quote sheet if available
     if contractor.third_party_document:
         documents.append({
-            "document_name": "Third Party Document",
+            "document_name": "Quote Sheet (Third Party)",
             "document_type": "third_party",
             "document_url": contractor.third_party_document,
             "uploaded_date": contractor.third_party_response_received_date
