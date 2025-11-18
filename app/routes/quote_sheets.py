@@ -174,6 +174,15 @@ async def upload_quote_sheet(
     quote_sheet.status = QuoteSheetStatus.UPLOADED
     quote_sheet.uploaded_at = datetime.utcnow()
 
+    # Update contractor status - move from pending_third_party_response to documents_uploaded
+    # Consultant will then fill CDS & CS form, which moves it to pending_review
+    from app.models.contractor import ContractorStatus
+    contractor = db.query(Contractor).filter(Contractor.id == quote_sheet.contractor_id).first()
+    if contractor and contractor.status == ContractorStatus.PENDING_THIRD_PARTY_RESPONSE:
+        contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
+        contractor.third_party_response_received_date = datetime.utcnow()
+        contractor.updated_at = datetime.utcnow()
+
     db.commit()
     db.refresh(quote_sheet)
 
