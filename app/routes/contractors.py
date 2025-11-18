@@ -6,8 +6,10 @@ import uuid
 import json
 
 from app.database import get_db
-from app.models.contractor import Contractor, ContractorStatus
+from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute
+from app.models.third_party import ThirdParty
 from app.models.user import User, UserRole
+from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.schemas.contractor import (
     ContractorResponse,
     ContractorDetailResponse,
@@ -17,7 +19,9 @@ from app.schemas.contractor import (
     DocumentUploadData,
     SuperadminSignatureData,
     ContractorApproval,
-    DocumentResponse
+    DocumentResponse,
+    RouteSelection,
+    ThirdPartyRequest
 )
 from app.utils.auth import (
     get_current_active_user,
@@ -31,7 +35,8 @@ from app.utils.email import (
     send_activation_email,
     send_document_upload_email,
     send_documents_uploaded_notification,
-    send_review_notification
+    send_review_notification,
+    send_third_party_contractor_request
 )
 from app.utils.contract_template import populate_contract_template
 from app.utils.pdf_generator import generate_contract_pdf
@@ -292,15 +297,34 @@ async def get_contractor_by_document_token(
 @router.post("/upload-documents/{token}")
 async def upload_documents(
     token: str,
+    # Personal Information (Form fields)
+    first_name: str = Form(...),
+    surname: str = Form(...),
+    email: str = Form(...),
+    gender: str = Form(...),
+    dob: str = Form(...),
+    nationality: str = Form(...),
+    marital_status: Optional[str] = Form(None),
+    number_of_children: Optional[str] = Form(None),
+    phone: str = Form(...),
+    home_address: str = Form(...),
+    address_line2: Optional[str] = Form(None),
+    address_line3: Optional[str] = Form(None),
+    address_line4: Optional[str] = Form(None),
+    candidate_bank_details: Optional[str] = Form(None),
+    candidate_iban: Optional[str] = Form(None),
+    # Document Files
     passport_document: UploadFile = File(...),
     photo_document: UploadFile = File(...),
     visa_page_document: UploadFile = File(...),
-    emirates_id_document: UploadFile = File(...),
+    id_front_document: UploadFile = File(...),
+    id_back_document: UploadFile = File(...),
     degree_document: UploadFile = File(...),
+    emirates_id_document: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
 ):
     """
-    NEW Step 2: Contractor uploads required documents
+    NEW Step 2: Contractor uploads personal information and required documents
     """
     from app.utils.storage import storage
 
@@ -327,19 +351,44 @@ async def upload_documents(
         )
 
     try:
+        # Update personal information
+        contractor.first_name = first_name
+        contractor.surname = surname
+        contractor.email = email
+        contractor.gender = gender
+        contractor.dob = dob
+        contractor.nationality = nationality
+        contractor.marital_status = marital_status
+        contractor.number_of_children = number_of_children
+        contractor.phone = phone
+        contractor.home_address = home_address
+        contractor.address_line2 = address_line2
+        contractor.address_line3 = address_line3
+        contractor.address_line4 = address_line4
+        contractor.candidate_bank_details = candidate_bank_details
+        contractor.candidate_iban = candidate_iban
+
         # Upload documents to Supabase Storage and get URLs
         passport_url = await storage.upload_document(passport_document, contractor.id, "passport")
         photo_url = await storage.upload_document(photo_document, contractor.id, "photo")
         visa_url = await storage.upload_document(visa_page_document, contractor.id, "visa")
-        emirates_id_url = await storage.upload_document(emirates_id_document, contractor.id, "emirates_id")
+        id_front_url = await storage.upload_document(id_front_document, contractor.id, "id_front")
+        id_back_url = await storage.upload_document(id_back_document, contractor.id, "id_back")
         degree_url = await storage.upload_document(degree_document, contractor.id, "degree")
 
         # Update contractor with document URLs
         contractor.passport_document = passport_url
         contractor.photo_document = photo_url
         contractor.visa_page_document = visa_url
-        contractor.emirates_id_document = emirates_id_url
+        contractor.id_front_document = id_front_url
+        contractor.id_back_document = id_back_url
         contractor.degree_document = degree_url
+
+        # Upload Emirates ID if provided (optional)
+        if emirates_id_document:
+            emirates_id_url = await storage.upload_document(emirates_id_document, contractor.id, "emirates_id")
+            contractor.emirates_id_document = emirates_id_url
+
         contractor.documents_uploaded_date = datetime.now(timezone.utc)
         contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
 
@@ -715,17 +764,19 @@ async def approve_contractor(
         )
 
     if not approval_data.approved:
-        # If not approved, update status back to documents_uploaded or add rejection reason
+        # If not approved, set status to REJECTED
         contractor.reviewed_date = datetime.now(timezone.utc)
         contractor.reviewed_by = current_user.id
+        contractor.status = ContractorStatus.REJECTED
         # Optionally store rejection notes
         db.commit()
         db.refresh(contractor)
 
         return {
-            "message": "Contractor review recorded",
+            "message": "Contractor rejected",
             "contractor_id": contractor.id,
-            "approved": False
+            "approved": False,
+            "status": "rejected"
         }
 
     # Generate unique contract token
@@ -1012,10 +1063,13 @@ async def activate_contractor(
 async def delete_contractor(
     contractor_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"]))
+    current_user: User = Depends(get_current_active_user)
 ):
     """
-    Delete a contractor (admin only)
+    Delete a contractor
+    - Admins/Superadmins can delete any contractor
+    - Consultants can only delete contractors they created
+    - Cannot delete contractors that are signed, active, or suspended
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -1023,6 +1077,22 @@ async def delete_contractor(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contractor not found"
+        )
+
+    # Check permissions
+    if current_user.role == UserRole.CONSULTANT:
+        # Consultants can only delete their own contractors
+        if contractor.consultant_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only cancel contractors you created"
+            )
+
+    # Prevent deletion of contractors in certain statuses
+    if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE, ContractorStatus.SUSPENDED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete contractor with status: {contractor.status}"
         )
 
     db.delete(contractor)
@@ -1150,6 +1220,31 @@ async def get_contractor_documents(
             "uploaded_date": contractor.documents_uploaded_date
         })
 
+    if contractor.id_front_document:
+        documents.append({
+            "document_name": "ID Front",
+            "document_type": "id_front",
+            "document_url": contractor.id_front_document,
+            "uploaded_date": contractor.documents_uploaded_date
+        })
+
+    if contractor.id_back_document:
+        documents.append({
+            "document_name": "ID Back",
+            "document_type": "id_back",
+            "document_url": contractor.id_back_document,
+            "uploaded_date": contractor.documents_uploaded_date
+        })
+
+    # Add third party document if available
+    if contractor.third_party_document:
+        documents.append({
+            "document_name": "Third Party Document",
+            "document_type": "third_party",
+            "document_url": contractor.third_party_document,
+            "uploaded_date": contractor.third_party_response_received_date
+        })
+
     # Add other documents
     if contractor.other_documents:
         for idx, doc in enumerate(contractor.other_documents):
@@ -1174,3 +1269,145 @@ async def get_contractor_documents(
         "documents": documents,
         "total": len(documents)
     }
+
+
+@router.post("/{contractor_id}/select-route")
+async def select_onboarding_route(
+    contractor_id: str,
+    data: RouteSelection,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Select onboarding route for contractor after documents are uploaded
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Verify contractor is in correct status
+    if contractor.status != ContractorStatus.DOCUMENTS_UPLOADED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot select route. Contractor status is {contractor.status}"
+        )
+
+    # Validate and set route
+    if data.route not in ["wps_freelancer", "third_party"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid route. Must be 'wps_freelancer' or 'third_party'"
+        )
+
+    contractor.onboarding_route = OnboardingRoute(data.route)
+
+    # If third party route selected, update status to pending third party response
+    if data.route == "third_party":
+        contractor.status = ContractorStatus.PENDING_THIRD_PARTY_RESPONSE
+    # If WPS/Freelancer route, status stays as DOCUMENTS_UPLOADED
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": f"Onboarding route set to {data.route}",
+        "contractor_id": contractor.id,
+        "route": contractor.onboarding_route,
+        "status": contractor.status
+    }
+
+
+@router.post("/{contractor_id}/send-third-party-request")
+async def send_third_party_request(
+    contractor_id: str,
+    data: ThirdPartyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Send email request to third party company for contractor quote/documents
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Verify contractor has third party route selected
+    if contractor.onboarding_route != OnboardingRoute.THIRD_PARTY:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contractor must have third party route selected"
+        )
+
+    # Get third party company details
+    third_party = db.query(ThirdParty).filter(ThirdParty.id == data.third_party_id).first()
+
+    if not third_party:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Third party company not found"
+        )
+
+    # Create quote sheet with upload token
+    upload_token = generate_unique_token()
+    token_expiry = datetime.now(timezone.utc) + timedelta(days=30)  # 30 days to upload
+
+    quote_sheet = QuoteSheet(
+        contractor_id=contractor_id,
+        third_party_id=data.third_party_id,
+        consultant_id=current_user.id,
+        upload_token=upload_token,
+        token_expiry=token_expiry,
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
+        third_party_company_name=third_party.company_name,
+        status=QuoteSheetStatus.PENDING
+    )
+
+    db.add(quote_sheet)
+
+    # Update contractor with third party company ID
+    contractor.third_party_company_id = data.third_party_id
+    contractor.third_party_email_sent_date = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(quote_sheet)
+
+    # Generate upload URL
+    upload_url = f"{settings.frontend_url}/quote-sheet/upload?token={upload_token}"
+
+    # Send email to third party
+    try:
+        email_sent = send_third_party_contractor_request(
+            third_party_email=third_party.contact_person_email,
+            third_party_company_name=third_party.company_name,
+            email_subject=data.email_subject,
+            email_body=data.email_body,
+            consultant_name=current_user.name,
+            upload_url=upload_url
+        )
+
+        if not email_sent:
+            print(f"[WARNING] Failed to send email to {third_party.contact_person_email}")
+        else:
+            print(f"[SUCCESS] Third party request email sent to {third_party.contact_person_email}")
+    except Exception as e:
+        print(f"[ERROR] Exception sending email: {str(e)}")
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Third party request email sent successfully",
+        "contractor_id": contractor.id,
+        "third_party_company": third_party.company_name,
+        "email_sent_to": third_party.contact_person_email,
+        "email_sent_date": contractor.third_party_email_sent_date
+    }
+ 
