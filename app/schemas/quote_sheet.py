@@ -6,7 +6,7 @@ from app.models.quote_sheet import QuoteSheetStatus
 
 class QuoteSheetBase(BaseModel):
     contractor_id: str
-    third_party_id: str
+    third_party_id: Optional[str] = None
     contractor_name: Optional[str] = None
     third_party_company_name: Optional[str] = None
     proposed_rate: Optional[float] = None

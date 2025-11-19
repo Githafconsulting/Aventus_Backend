@@ -12,11 +12,15 @@ class ThirdParty(Base):
     # Country & Workflow Configuration
     country = Column(String)  # Saudi Arabia, UAE, Qatar
     company_type = Column(String)  # 3rd Party, 3rd Party Payroll
+    feature_config = Column(JSON, default=dict)  # Feature configuration (legacy)
     workflow_config = Column(JSON, default=dict)  # Workflow item configuration
 
     # Company Details
     company_name = Column(String, nullable=False)
-    registered_address = Column(String)
+    address_line1 = Column(String, nullable=True)
+    address_line2 = Column(String, nullable=True)
+    address_line3 = Column(String, nullable=True)
+    address_line4 = Column(String, nullable=True)
     company_vat_no = Column(String)
     company_reg_no = Column(String)
     contact_person_name = Column(String)

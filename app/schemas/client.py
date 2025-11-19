@@ -3,6 +3,15 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
+class Project(BaseModel):
+    """Project schema for client projects"""
+    name: str
+    description: Optional[str] = None
+    status: Optional[str] = "Planning"
+    third_party_id: Optional[str] = None
+    third_party_name: Optional[str] = None
+
+
 class ClientBase(BaseModel):
     company_name: str = Field(..., min_length=1, max_length=200)
     industry: Optional[str] = None
@@ -39,10 +48,14 @@ class ClientBase(BaseModel):
     client_invoice_frequency: Optional[str] = None
     client_payment_terms: Optional[str] = None
     invoicing_preferences: Optional[str] = None
+    invoice_delivery_method: Optional[str] = None
     invoice_instructions: Optional[str] = None
 
     # Supporting Documents
     supporting_documents_required: Optional[List[str]] = []
+
+    # Projects
+    projects: Optional[List[Project]] = []
 
     is_active: bool = True
 
@@ -87,10 +100,14 @@ class ClientUpdate(BaseModel):
     client_invoice_frequency: Optional[str] = None
     client_payment_terms: Optional[str] = None
     invoicing_preferences: Optional[str] = None
+    invoice_delivery_method: Optional[str] = None
     invoice_instructions: Optional[str] = None
 
     # Supporting Documents
     supporting_documents_required: Optional[List[str]] = None
+
+    # Projects
+    projects: Optional[List[Project]] = None
 
     is_active: Optional[bool] = None
 
@@ -98,6 +115,7 @@ class ClientUpdate(BaseModel):
 class ClientResponse(ClientBase):
     id: str
     documents: Optional[List[Dict[str, Any]]] = []
+    projects: Optional[List[Dict[str, Any]]] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
 

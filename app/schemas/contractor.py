@@ -129,6 +129,8 @@ class DocumentUploadData(BaseModel):
     gender: str
     dob: str
     nationality: str
+    country: Optional[str] = None
+    current_location: Optional[str] = None
     marital_status: Optional[str] = None
     number_of_children: Optional[str] = None
     phone: str
@@ -218,7 +220,8 @@ class ContractorResponse(BaseModel):
 
 class RouteSelection(BaseModel):
     """Schema for selecting onboarding route"""
-    route: str  # "wps_freelancer" or "third_party"
+    route: str  # "wps", "freelancer", "uae", "saudi", "offshore"
+    sub_route: Optional[str] = "direct"  # "direct" or "third_party" (for UAE and SAUDI)
 
 
 class ThirdPartyRequest(BaseModel):
@@ -226,6 +229,15 @@ class ThirdPartyRequest(BaseModel):
     third_party_id: str
     email_subject: str
     email_body: str
+
+
+class QuoteSheetRequest(BaseModel):
+    """Schema for sending quote sheet request with direct email (for SAUDI route)"""
+    third_party_id: Optional[str] = None  # Optional third party ID if selecting from dropdown
+    third_party_email: str
+    email_cc: Optional[str] = None  # Optional CC email
+    email_subject: str
+    email_message: str
 
 
 class ContractorDetailResponse(BaseModel):
@@ -238,10 +250,19 @@ class ContractorDetailResponse(BaseModel):
     surname: str
     gender: Optional[str] = None
     nationality: Optional[str] = None
+    country: Optional[str] = None
+    current_location: Optional[str] = None
+    marital_status: Optional[str] = None
+    number_of_children: Optional[str] = None
     home_address: Optional[str] = None
+    address_line2: Optional[str] = None
+    address_line3: Optional[str] = None
+    address_line4: Optional[str] = None
     phone: str
     email: str
     dob: Optional[str] = None
+    candidate_bank_details: Optional[str] = None
+    candidate_iban: Optional[str] = None
 
     # Optional fields
     client_name: Optional[str] = None

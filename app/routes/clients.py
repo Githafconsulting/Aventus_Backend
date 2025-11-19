@@ -17,10 +17,10 @@ router = APIRouter(prefix="/api/v1/clients", tags=["clients"])
 async def create_client(
     client_data: ClientCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Create a new client company (Admin/Superadmin only)
+    Create a new client company (Consultant/Admin/Superadmin only)
     """
     # Check if company name already exists
     existing = db.query(Client).filter(Client.company_name == client_data.company_name).first()
@@ -81,10 +81,10 @@ async def update_client(
     client_id: str,
     client_data: ClientUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Update a client company (Admin/Superadmin only)
+    Update a client company (Consultant/Admin/Superadmin only)
     """
     client = db.query(Client).filter(Client.id == client_id).first()
 
@@ -146,10 +146,10 @@ async def upload_client_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Upload a document for a client company (Admin/Superadmin only)
+    Upload a document for a client company (Consultant/Admin/Superadmin only)
     """
     client = db.query(Client).filter(Client.id == client_id).first()
 
@@ -210,10 +210,10 @@ async def delete_client_document(
     client_id: str,
     document_index: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Delete a document from a client company (Admin/Superadmin only)
+    Delete a document from a client company (Consultant/Admin/Superadmin only)
     """
     client = db.query(Client).filter(Client.id == client_id).first()
 

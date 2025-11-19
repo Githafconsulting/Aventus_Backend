@@ -1921,7 +1921,8 @@ def send_third_party_contractor_request(
     email_subject: str,
     email_body: str,
     consultant_name: str,
-    upload_url: str
+    upload_url: str,
+    email_cc: str = None
 ) -> bool:
     """
     Send contractor quote/document request email to third party company with upload link
@@ -1965,6 +1966,10 @@ def send_third_party_contractor_request(
             "subject": email_subject,
             "html": html_content,
         }
+
+        # Add CC if provided
+        if email_cc:
+            params["cc"] = [email_cc]
 
         email = resend.Emails.send(params)
         print(f"Third party request sent to {third_party_email}: {email}")

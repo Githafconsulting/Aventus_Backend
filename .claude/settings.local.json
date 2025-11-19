@@ -39,7 +39,18 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(wmic process where \"ProcessId=15764\" delete)",
+      "Bash(wmic process where \"ProcessId=20740\" delete)",
+      "Bash(del \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\test_third_parties.py\")",
+      "Bash(del test_api.py)",
+      "Bash(del \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\test_select_route.py\")",
+      "Bash(copy /Y \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py\" \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py.tmp\")",
+      "Bash(copy /Y \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py.tmp\" \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py\")",
+      "Bash(del \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py.tmp\")",
+      "Bash(wmic process where \"CommandLine like ''%uvicorn%'' or (name=''python.exe'' and CommandLine like ''%main%'')\" get ProcessId,CommandLine)",
+      "Bash(wmic process where \"ProcessId=16736\" delete)",
+      "Bash(wmic process where \"ProcessId=8292\" delete)"
     ],
     "deny": [],
     "ask": []

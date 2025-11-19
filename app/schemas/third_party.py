@@ -34,11 +34,15 @@ class ThirdPartyBase(BaseModel):
     # Country & Workflow Configuration
     country: Optional[str] = None
     company_type: Optional[str] = None
+    feature_config: Optional[Dict[str, Any]] = None
     workflow_config: Optional[WorkflowConfig] = None
 
     # Company Details
     company_name: str
-    registered_address: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    address_line3: Optional[str] = None
+    address_line4: Optional[str] = None
     company_vat_no: Optional[str] = None
     company_reg_no: Optional[str] = None
     contact_person_name: Optional[str] = None
@@ -61,11 +65,15 @@ class ThirdPartyUpdate(BaseModel):
     # Country & Workflow Configuration
     country: Optional[str] = None
     company_type: Optional[str] = None
+    feature_config: Optional[Dict[str, Any]] = None
     workflow_config: Optional[WorkflowConfig] = None
 
     # Company Details
     company_name: Optional[str] = None
-    registered_address: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    address_line3: Optional[str] = None
+    address_line4: Optional[str] = None
     company_vat_no: Optional[str] = None
     company_reg_no: Optional[str] = None
     contact_person_name: Optional[str] = None

@@ -21,7 +21,7 @@ class QuoteSheet(Base):
 
     # Relationships
     contractor_id = Column(String, ForeignKey("contractors.id"), nullable=False)
-    third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=False)
+    third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=True)  # Nullable for direct email requests (SAUDI route)
     consultant_id = Column(String, ForeignKey("users.id"), nullable=False)
 
     # Upload token for secure access

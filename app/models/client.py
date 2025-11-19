@@ -54,6 +54,7 @@ class Client(Base):
     client_invoice_frequency = Column(String, nullable=True)  # Weekly, Bi-weekly, Monthly
     client_payment_terms = Column(String, nullable=True)  # Net 30, Net 60, etc.
     invoicing_preferences = Column(String, nullable=True)  # Consolidated, Per Worker, Consolidated per Project
+    invoice_delivery_method = Column(String, nullable=True)  # Upload, Email
     invoice_instructions = Column(String, nullable=True)
 
     # Supporting Documents
@@ -61,6 +62,9 @@ class Client(Base):
 
     # Documents
     documents = Column(JSON, default=lambda: [])  # Store uploaded document URLs and metadata
+
+    # Projects
+    projects = Column(JSON, default=lambda: [], nullable=True)  # List of projects with name, description, dates, budget, status
 
     # Status
     is_active = Column(Boolean, default=True, nullable=False)
