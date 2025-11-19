@@ -1,3 +1,4 @@
+# Contractors API routes
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -21,7 +22,8 @@ from app.schemas.contractor import (
     ContractorApproval,
     DocumentResponse,
     RouteSelection,
-    ThirdPartyRequest
+    ThirdPartyRequest,
+    QuoteSheetRequest
 )
 from app.utils.auth import (
     get_current_active_user,
@@ -304,6 +306,8 @@ async def upload_documents(
     gender: str = Form(...),
     dob: str = Form(...),
     nationality: str = Form(...),
+    country: Optional[str] = Form(None),
+    current_location: Optional[str] = Form(None),
     marital_status: Optional[str] = Form(None),
     number_of_children: Optional[str] = Form(None),
     phone: str = Form(...),
@@ -358,6 +362,8 @@ async def upload_documents(
         contractor.gender = gender
         contractor.dob = dob
         contractor.nationality = nationality
+        contractor.country = country
+        contractor.current_location = current_location
         contractor.marital_status = marital_status
         contractor.number_of_children = number_of_children
         contractor.phone = phone
@@ -447,8 +453,8 @@ async def submit_cds_form(
             detail="Contractor not found"
         )
 
-    # Check if documents are uploaded
-    if contractor.status != ContractorStatus.DOCUMENTS_UPLOADED:
+    # Check if contractor is ready for CDS (either documents uploaded or pending CDS/CS)
+    if contractor.status not in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_CDS_CS]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Documents must be uploaded before completing CDS"
@@ -466,6 +472,10 @@ async def submit_cds_form(
         contractor.gender = form_data['gender']
     if 'nationality' in form_data:
         contractor.nationality = form_data['nationality']
+    if 'country' in form_data:
+        contractor.country = form_data['country']
+    if 'currentLocation' in form_data:
+        contractor.current_location = form_data['currentLocation']
     if 'homeAddress' in form_data:
         contractor.home_address = form_data['homeAddress']
     if 'addressLine3' in form_data:
@@ -488,6 +498,10 @@ async def submit_cds_form(
         contractor.umbrella_company_name = form_data['umbrellaCompanyName']
     if 'registeredAddress' in form_data:
         contractor.registered_address = form_data['registeredAddress']
+    if 'managementAddressLine2' in form_data:
+        contractor.management_address_line2 = form_data['managementAddressLine2']
+    if 'managementAddressLine3' in form_data:
+        contractor.management_address_line3 = form_data['managementAddressLine3']
     if 'companyVATNo' in form_data:
         contractor.company_vat_no = form_data['companyVATNo']
     if 'companyName' in form_data:
@@ -500,6 +514,8 @@ async def submit_cds_form(
         contractor.company_reg_no = form_data['companyRegNo']
 
     # Update placement details
+    if 'clientId' in form_data:
+        contractor.client_id = form_data['clientId']
     if 'clientName' in form_data:
         contractor.client_name = form_data['clientName']
     if 'projectName' in form_data:
@@ -567,6 +583,12 @@ async def submit_cds_form(
     if 'otherNotes' in form_data:
         contractor.other_notes = form_data['otherNotes']
 
+    # Update summary calculations
+    if 'contractorTotalFixedCosts' in form_data:
+        contractor.contractor_total_fixed_costs = form_data['contractorTotalFixedCosts']
+    if 'estimatedMonthlyGP' in form_data:
+        contractor.estimated_monthly_gp = form_data['estimatedMonthlyGP']
+
     # Update Aventus Deal details
     if 'consultant' in form_data:
         contractor.consultant = form_data['consultant']
@@ -621,7 +643,7 @@ async def submit_cds_form(
     if 'candidateIBAN' in form_data:
         contractor.candidate_iban = form_data['candidateIBAN']
 
-    # Keep status as DOCUMENTS_UPLOADED - don't change it yet
+    # Keep status unchanged (either DOCUMENTS_UPLOADED or PENDING_CDS_CS)
     # Status will be changed to PENDING_REVIEW after costing sheet submission
 
     db.commit()
@@ -658,11 +680,11 @@ async def submit_costing_sheet(
             detail="Contractor not found"
         )
 
-    # Check if documents are uploaded
-    if contractor.status != ContractorStatus.DOCUMENTS_UPLOADED:
+    # Check if contractor is ready for costing sheet submission
+    if contractor.status not in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_CDS_CS]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Documents must be uploaded before submitting costing sheet"
+            detail="CDS form must be completed before submitting costing sheet"
         )
 
     # Parse expenses JSON
@@ -700,8 +722,8 @@ async def submit_costing_sheet(
 
     contractor.costing_sheet_data = costing_sheet_data
 
-    # Update status to pending review
-    contractor.status = ContractorStatus.PENDING_REVIEW
+    # Update status to CDS & CS completed (awaiting admin review)
+    contractor.status = ContractorStatus.CDS_CS_COMPLETED
 
     db.commit()
     db.refresh(contractor)
@@ -756,11 +778,11 @@ async def approve_contractor(
             detail="Contractor not found"
         )
 
-    # Check status
-    if contractor.status != ContractorStatus.PENDING_REVIEW:
+    # Check status - must have completed CDS & CS
+    if contractor.status != ContractorStatus.CDS_CS_COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contractor must be in pending review status"
+            detail="Contractor must have completed CDS & CS forms before approval"
         )
 
     if not approval_data.approved:
@@ -855,7 +877,7 @@ async def recall_contractor_for_editing(
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
 ):
     """
-    Recall a contractor from pending_review status back to documents_uploaded
+    Recall a contractor from cds_cs_completed status back to pending_cds_cs
     to allow consultant to make changes and resubmit
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
@@ -866,11 +888,11 @@ async def recall_contractor_for_editing(
             detail="Contractor not found"
         )
 
-    # Check status - can only recall from pending_review
-    if contractor.status != ContractorStatus.PENDING_REVIEW:
+    # Check status - can only recall from cds_cs_completed
+    if contractor.status != ContractorStatus.CDS_CS_COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only recall contractors that are pending review"
+            detail="Can only recall contractors that have completed CDS & CS"
         )
 
     # Only allow consultant to recall their own contractors (or admin/superadmin)
@@ -880,8 +902,8 @@ async def recall_contractor_for_editing(
             detail="You can only recall your own contractors"
         )
 
-    # Change status back to documents_uploaded
-    contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
+    # Change status back to pending_cds_cs so consultant can edit
+    contractor.status = ContractorStatus.PENDING_CDS_CS
     contractor.reviewed_date = None  # Clear review date since it's being recalled
     contractor.updated_at = datetime.now(timezone.utc)
 
@@ -1148,6 +1170,51 @@ async def delete_contractor(
     return {"message": "Contractor deleted successfully"}
 
 
+@router.post("/{contractor_id}/cancel")
+async def cancel_contractor(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Cancel a contractor request by setting status to CANCELLED
+    - Admins/Superadmins can cancel any contractor
+    - Consultants can only cancel contractors they created
+    - Cannot cancel contractors that are signed, active, or suspended
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check permissions
+    if current_user.role == UserRole.CONSULTANT:
+        # Consultants can only cancel their own contractors
+        if contractor.consultant_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only cancel contractors you created"
+            )
+
+    # Prevent cancellation of contractors in certain statuses
+    if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE, ContractorStatus.SUSPENDED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel contractor with status: {contractor.status}"
+        )
+
+    # Set status to CANCELLED
+    contractor.status = ContractorStatus.CANCELLED
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {"message": "Contractor request cancelled successfully", "contractor": contractor}
+
+
 # Superadmin Signature Management Endpoints
 
 @router.put("/superadmin/signature")
@@ -1327,6 +1394,8 @@ async def select_onboarding_route(
 ):
     """
     Select onboarding route for contractor after documents are uploaded
+    Routes: wps, freelancer, uae, saudi, offshore
+    Sub-routes: direct, third_party (for uae and saudi)
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -1336,35 +1405,153 @@ async def select_onboarding_route(
             detail="Contractor not found"
         )
 
-    # Verify contractor is in correct status
-    if contractor.status != ContractorStatus.DOCUMENTS_UPLOADED:
+    # Validate route
+    valid_routes = ["wps", "freelancer", "uae", "saudi", "offshore"]
+    if data.route not in valid_routes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot select route. Contractor status is {contractor.status}"
+            detail=f"Invalid route. Must be one of: {', '.join(valid_routes)}"
         )
 
-    # Validate and set route
-    if data.route not in ["wps_freelancer", "third_party"]:
+    # Validate sub-route
+    valid_sub_routes = ["direct", "third_party"]
+    if data.sub_route and data.sub_route not in valid_sub_routes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid route. Must be 'wps_freelancer' or 'third_party'"
+            detail=f"Invalid sub-route. Must be one of: {', '.join(valid_sub_routes)}"
         )
 
-    contractor.onboarding_route = OnboardingRoute(data.route)
+    # Store route information
+    # For backward compatibility, map new routes to business_type
+    route_to_business_type = {
+        "wps": "WPS",
+        "freelancer": "Freelancer",
+        "uae": "3RD Party" if data.sub_route == "third_party" else "Freelancer",
+        "saudi": "3RD Party" if data.sub_route == "third_party" else "Freelancer",
+        "offshore": "Freelancer"
+    }
 
-    # If third party route selected, update status to pending third party response
-    if data.route == "third_party":
+    contractor.business_type = route_to_business_type.get(data.route, "Freelancer")
+
+    # Set onboarding route
+    if data.sub_route == "third_party":
+        contractor.onboarding_route = OnboardingRoute.THIRD_PARTY
         contractor.status = ContractorStatus.PENDING_THIRD_PARTY_RESPONSE
-    # If WPS/Freelancer route, status stays as DOCUMENTS_UPLOADED
+    else:
+        # Direct route (WPS, Freelancer, UAE-Direct, Offshore)
+        contractor.onboarding_route = OnboardingRoute.WPS_FREELANCER
+        # Status stays as DOCUMENTS_UPLOADED until CDS & CS forms are completed
 
     db.commit()
     db.refresh(contractor)
 
     return {
-        "message": f"Onboarding route set to {data.route}",
+        "message": f"Onboarding route set to {data.route} ({data.sub_route})",
         "contractor_id": contractor.id,
-        "route": contractor.onboarding_route,
+        "route": data.route,
+        "sub_route": data.sub_route,
+        "business_type": contractor.business_type,
         "status": contractor.status
+    }
+
+
+@router.post("/{contractor_id}/request-quote-sheet")
+async def request_quote_sheet(
+    contractor_id: str,
+    data: QuoteSheetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Send quote sheet request email to third party with upload link (for SAUDI route)
+    Supports both selecting from third party database or entering email directly
+    """
+    import secrets
+    from app.utils.storage import storage
+    from app.models.third_party import ThirdParty
+
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # If third_party_id is provided, fetch third party details
+    third_party_company_name = "Third Party"
+    third_party_id_to_save = None
+
+    if data.third_party_id:
+        third_party = db.query(ThirdParty).filter(ThirdParty.id == data.third_party_id).first()
+        if third_party:
+            third_party_company_name = third_party.company_name
+            third_party_id_to_save = data.third_party_id
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Third party not found"
+            )
+    else:
+        # Extract company name from email domain if no third party selected
+        third_party_company_name = data.third_party_email.split('@')[1] if '@' in data.third_party_email else "Third Party"
+
+    # Generate upload token (valid for 14 days)
+    upload_token = secrets.token_urlsafe(32)
+    token_expiry = datetime.utcnow() + timedelta(days=14)
+
+    # Create quote sheet request record
+    quote_sheet = QuoteSheet(
+        id=str(uuid.uuid4()),
+        contractor_id=contractor_id,
+        third_party_id=third_party_id_to_save,  # Save third party ID if selected from dropdown
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
+        third_party_company_name=third_party_company_name,
+        consultant_id=current_user.id,
+        upload_token=upload_token,
+        token_expiry=token_expiry,
+        status=QuoteSheetStatus.PENDING,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(quote_sheet)
+    db.commit()
+    db.refresh(quote_sheet)
+
+    # Send email with upload link
+    upload_url = f"{settings.frontend_url}/quote-sheet/upload?token={upload_token}"
+
+    from app.utils.email import send_third_party_contractor_request
+    email_sent = send_third_party_contractor_request(
+        third_party_email=data.third_party_email,
+        third_party_company_name=third_party_company_name,
+        email_subject=data.email_subject,
+        email_body=data.email_message,
+        consultant_name=current_user.name,
+        upload_url=upload_url,
+        email_cc=data.email_cc
+    )
+
+    if not email_sent:
+        # If email fails, delete the quote sheet record
+        db.delete(quote_sheet)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send email"
+        )
+
+    # Update contractor status to waiting for third party response
+    contractor.status = ContractorStatus.PENDING_THIRD_PARTY_RESPONSE
+    db.commit()
+
+    return {
+        "message": "Quote sheet request sent successfully",
+        "contractor_id": contractor_id,
+        "quote_sheet_id": quote_sheet.id,
+        "upload_token": upload_token,
+        "email_sent_to": data.third_party_email,
+        "email_cc": data.email_cc
     }
 
 
@@ -1419,9 +1606,10 @@ async def send_third_party_request(
 
     db.add(quote_sheet)
 
-    # Update contractor with third party company ID
+    # Update contractor with third party company ID and status
     contractor.third_party_company_id = data.third_party_id
     contractor.third_party_email_sent_date = datetime.now(timezone.utc)
+    contractor.status = ContractorStatus.PENDING_THIRD_PARTY_RESPONSE
 
     db.commit()
     db.refresh(quote_sheet)

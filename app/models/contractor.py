@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
+#  Updated contractor statuses
 
 
 class ContractorStatus(str, enum.Enum):
@@ -10,9 +11,12 @@ class ContractorStatus(str, enum.Enum):
     PENDING_DOCUMENTS = "pending_documents"
     DOCUMENTS_UPLOADED = "documents_uploaded"
     PENDING_THIRD_PARTY_RESPONSE = "pending_third_party_response"
+    PENDING_CDS_CS = "pending_cds_cs"
+    CDS_CS_COMPLETED = "cds_cs_completed"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"
     PENDING_SIGNATURE = "pending_signature"
     SIGNED = "signed"
     ACTIVE = "active"
@@ -37,8 +41,8 @@ class Contractor(Base):
     id = Column(String, primary_key=True, index=True)
 
     # Status & Workflow
-    status = Column(SQLEnum(ContractorStatus), nullable=False, default=ContractorStatus.DRAFT)
-    onboarding_route = Column(SQLEnum(OnboardingRoute), nullable=True)  # WPS/Freelancer or Third Party
+    status = Column(SQLEnum(ContractorStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=ContractorStatus.DRAFT)
+    onboarding_route = Column(SQLEnum(OnboardingRoute, values_callable=lambda x: [e.value for e in x]), nullable=True)  # WPS/Freelancer or Third Party
     contract_token = Column(String, unique=True, nullable=True, index=True)
     signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     signature_data = Column(Text, nullable=True)  # Name for typed, base64 for drawn
@@ -90,6 +94,8 @@ class Contractor(Base):
     surname = Column(String, nullable=False)
     gender = Column(String, nullable=False)  # "Male" or "Female"
     nationality = Column(String, nullable=False)
+    country = Column(String, nullable=True)  # Current country
+    current_location = Column(String, nullable=True)  # Current city/location
     marital_status = Column(String, nullable=True)  # "Single", "Married", "Divorced", "Widowed"
     number_of_children = Column(String, nullable=True)
     home_address = Column(String, nullable=False)
@@ -114,6 +120,7 @@ class Contractor(Base):
     company_reg_no = Column(String, nullable=True)
 
     # Placement Details
+    client_id = Column(String, nullable=True)  # ID of the client company
     client_name = Column(String, nullable=True)
     project_name = Column(String, nullable=True)
     role = Column(String, nullable=True)
@@ -152,6 +159,10 @@ class Contractor(Base):
     security_deposit = Column(String, nullable=True)
     laptop_provider = Column(String, nullable=True)
     other_notes = Column(Text, nullable=True)
+
+    # Summary Calculations
+    contractor_total_fixed_costs = Column(String, nullable=True)
+    estimated_monthly_gp = Column(String, nullable=True)
 
     # Aventus Deal
     consultant = Column(String, nullable=True)
