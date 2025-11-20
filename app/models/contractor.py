@@ -23,6 +23,7 @@ class ContractorStatus(str, enum.Enum):
     CONTRACT_UPLOADED = "contract_uploaded"
     CONTRACT_APPROVED = "contract_approved"
     PENDING_SIGNATURE = "pending_signature"
+    PENDING_SUPERADMIN_SIGNATURE = "pending_superadmin_signature"
     SIGNED = "signed"
     ACTIVE = "active"
     SUSPENDED = "suspended"
@@ -88,6 +89,9 @@ class Contractor(Base):
     # Superadmin Signature
     superadmin_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     superadmin_signature_data = Column(Text, nullable=True)  # Name for typed, base64 for drawn
+
+    # Signed Contract (Generated after both parties sign)
+    signed_contract_url = Column(String, nullable=True)  # URL to final signed PDF in Supabase
 
     # Review & Approval Tracking
     reviewed_date = Column(DateTime(timezone=True), nullable=True)

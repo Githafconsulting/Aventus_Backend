@@ -262,3 +262,30 @@ async def delete_user(
     db.commit()
 
     return {"message": "User deleted successfully"}
+
+
+@router.get("/my-contracts")
+async def get_my_contracts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["superadmin"]))
+):
+    """
+    Get all contracts signed by the current superadmin
+    Only superadmins can access this endpoint
+    """
+    # Get current user with latest data
+    user = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Return contracts signed array (or empty array if None)
+    contracts_signed = user.contracts_signed or []
+
+    return {
+        "contracts": contracts_signed,
+        "total": len(contracts_signed)
+    }

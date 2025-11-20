@@ -7,14 +7,27 @@ from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
 import os
+import base64
 
 
-def generate_consultant_contract_pdf(contractor_data: dict) -> BytesIO:
+def generate_consultant_contract_pdf(
+    contractor_data: dict,
+    contractor_signature_type: str = None,
+    contractor_signature_data: str = None,
+    superadmin_signature_type: str = None,
+    superadmin_signature_data: str = None,
+    signed_date: str = None
+) -> BytesIO:
     """
     Generate a professional multi-page consultant contract PDF with Aventus branding
 
     Args:
         contractor_data: Dictionary containing contractor information
+        contractor_signature_type: "typed" or "drawn"
+        contractor_signature_data: Name for typed, base64 for drawn
+        superadmin_signature_type: "typed" or "drawn"
+        superadmin_signature_data: Name for typed, base64 for drawn
+        signed_date: Date when contract was signed
 
     Returns:
         BytesIO: PDF file in memory
@@ -466,14 +479,62 @@ def generate_consultant_contract_pdf(contractor_data: dict) -> BytesIO:
     # SIGNATURES SECTION
     elements.append(Paragraph("<b>Signed for and on behalf of the Principal.</b>", body_style))
     elements.append(Spacer(1, 15))
-    elements.append(Paragraph("_____________________", body_style))
-    elements.append(Paragraph("PRINCIPAL<br/>NAME<br/>POSITION", small_style))
+
+    # Render Superadmin Signature
+    if superadmin_signature_data:
+        if superadmin_signature_type == "drawn":
+            # Render drawn signature as image
+            try:
+                # Remove data URL prefix if present
+                if superadmin_signature_data.startswith('data:image'):
+                    superadmin_signature_data = superadmin_signature_data.split(',')[1]
+
+                signature_img_data = base64.b64decode(superadmin_signature_data)
+                signature_img_buffer = BytesIO(signature_img_data)
+                signature_img = Image(signature_img_buffer, width=60*mm, height=20*mm)
+                elements.append(signature_img)
+            except Exception as e:
+                # Fallback to line if image fails
+                elements.append(Paragraph("_____________________", body_style))
+        else:
+            # Render typed signature as text
+            elements.append(Paragraph(f"<i>{superadmin_signature_data}</i>", body_style))
+    else:
+        elements.append(Paragraph("_____________________", body_style))
+
+    elements.append(Paragraph("PRINCIPAL<br/>AVENTUS HR Consultant<br/>Authorized Signatory", small_style))
+    if signed_date:
+        elements.append(Paragraph(f"Date: {signed_date}", small_style))
     elements.append(Spacer(1, 20))
 
     elements.append(Paragraph(f"<b>I, <u>{contractor_name}</u> the undersigned confirm my acceptance of the above terms and conditions.</b>", body_style))
     elements.append(Spacer(1, 15))
-    elements.append(Paragraph("__________________________", body_style))
+
+    # Render Contractor Signature
+    if contractor_signature_data:
+        if contractor_signature_type == "drawn":
+            # Render drawn signature as image
+            try:
+                # Remove data URL prefix if present
+                if contractor_signature_data.startswith('data:image'):
+                    contractor_signature_data = contractor_signature_data.split(',')[1]
+
+                signature_img_data = base64.b64decode(contractor_signature_data)
+                signature_img_buffer = BytesIO(signature_img_data)
+                signature_img = Image(signature_img_buffer, width=60*mm, height=20*mm)
+                elements.append(signature_img)
+            except Exception as e:
+                # Fallback to line if image fails
+                elements.append(Paragraph("__________________________", body_style))
+        else:
+            # Render typed signature as text
+            elements.append(Paragraph(f"<i>{contractor_signature_data}</i>", body_style))
+    else:
+        elements.append(Paragraph("__________________________", body_style))
+
     elements.append(Paragraph("CONSULTANT", small_style))
+    if signed_date:
+        elements.append(Paragraph(f"Date: {signed_date}", small_style))
 
     # Footer
     elements.append(Spacer(1, 15))

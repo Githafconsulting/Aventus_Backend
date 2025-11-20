@@ -44,8 +44,9 @@ from app.utils.email import (
     send_work_order_to_client
 )
 from app.utils.contract_template import populate_contract_template
-from app.utils.pdf_generator import generate_contract_pdf
+from app.utils.contract_pdf_generator import generate_consultant_contract_pdf
 from app.utils.work_order_pdf_generator import generate_work_order_pdf
+from app.utils.storage import upload_file
 from app.config import settings
 from fastapi.responses import StreamingResponse
 
@@ -176,31 +177,23 @@ async def get_signed_contract(
             detail="Contract has not been signed yet"
         )
 
-    # Convert contractor model to dictionary
-    contractor_dict = {
+    # Prepare contractor data for the 5-page consultant contract
+    cds_data = contractor.cds_form_data or {}
+    contractor_data = {
         'first_name': contractor.first_name,
         'surname': contractor.surname,
-        'email': contractor.email,
-        'dob': contractor.dob,
-        'nationality': contractor.nationality,
-        'role': contractor.role,
-        'client_name': contractor.client_name,
-        'start_date': contractor.start_date,
-        'end_date': contractor.end_date,
-        'duration': contractor.duration,
-        'location': contractor.location,
-        'currency': contractor.currency,
-        'pay_rate': contractor.candidate_pay_rate,
-        'charge_rate': contractor.client_charge_rate,
-        'signature_data': contractor.signature_data,
-        'signature_type': contractor.signature_type,
-        'signed_date': contractor.signed_date,
-        'superadmin_signature_data': contractor.superadmin_signature_data,
-        'superadmin_signature_type': contractor.superadmin_signature_type,
+        'client_name': cds_data.get('clientName', contractor.client_name),
+        'client_address': cds_data.get('clientAddress', ''),
+        'role': cds_data.get('role', contractor.role),
+        'location': cds_data.get('location', contractor.location),
+        'duration': contractor.duration or cds_data.get('duration', '6 months'),
+        'start_date': contractor.start_date or cds_data.get('startDate', ''),
+        'candidate_pay_rate': contractor.candidate_pay_rate or cds_data.get('dayRate', ''),
+        'currency': contractor.currency or 'USD'
     }
 
-    # Generate PDF with both signatures
-    pdf_buffer = generate_contract_pdf(contractor_dict, include_signature=True)
+    # Generate PDF with the 5-page consultant contract generator
+    pdf_buffer = generate_consultant_contract_pdf(contractor_data)
 
     # Return PDF as streaming response
     return StreamingResponse(
@@ -208,6 +201,82 @@ async def get_signed_contract(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f"inline; filename=signed_contract_{contractor.first_name}_{contractor.surname}.pdf"
+        }
+    )
+
+
+@router.get("/{contractor_id}/contract-preview")
+async def get_contractor_contract_preview(
+    contractor_id: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate and preview contractor contract PDF
+    Accepts authentication via query parameter for iframe compatibility
+    """
+    # Authenticate via token query parameter (for iframe)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    # Verify JWT token
+    from jose import JWTError, jwt
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user or user.role not in ["consultant", "admin", "superadmin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized"
+        )
+
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Prepare contractor data for PDF generation
+    cds_data = contractor.cds_form_data or {}
+    contractor_data = {
+        'first_name': contractor.first_name,
+        'surname': contractor.surname,
+        'client_name': cds_data.get('clientName', contractor.client_name),
+        'client_address': cds_data.get('clientAddress', ''),
+        'role': cds_data.get('role', contractor.role),
+        'location': cds_data.get('location', contractor.location),
+        'duration': contractor.duration or cds_data.get('duration', '6 months'),
+        'start_date': contractor.start_date or cds_data.get('startDate', ''),
+        'candidate_pay_rate': contractor.candidate_pay_rate or cds_data.get('dayRate', ''),
+        'currency': contractor.currency or 'USD'
+    }
+
+    # Generate PDF
+    pdf_buffer = generate_consultant_contract_pdf(contractor_data)
+
+    # Return as streaming response
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename=contract_{contractor.first_name}_{contractor.surname}.pdf"
         }
     )
 
@@ -685,7 +754,7 @@ async def submit_costing_sheet(
         )
 
     # Check if contractor is ready for costing sheet submission
-    if contractor.status not in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_CDS_CS]:
+    if contractor.status not in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_CDS_CS, ContractorStatus.PENDING_REVIEW]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="CDS form must be completed before submitting costing sheet"
@@ -726,8 +795,8 @@ async def submit_costing_sheet(
 
     contractor.costing_sheet_data = costing_sheet_data
 
-    # Update status to CDS & CS completed (awaiting admin review)
-    contractor.status = ContractorStatus.CDS_CS_COMPLETED
+    # Update status to PENDING_REVIEW so admin can approve/reject
+    contractor.status = ContractorStatus.PENDING_REVIEW
 
     db.commit()
     db.refresh(contractor)
@@ -790,10 +859,10 @@ async def approve_contractor(
         )
 
     if not approval_data.approved:
-        # REJECTION: Return contractor to CDS_CS_COMPLETED status so consultant can edit and resubmit
+        # REJECTION: Return contractor to DOCUMENTS_UPLOADED status so consultant can edit and resubmit
         contractor.reviewed_date = datetime.now(timezone.utc)
         contractor.reviewed_by = current_user.id
-        contractor.status = ContractorStatus.CDS_CS_COMPLETED
+        contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
         # Store rejection notes if provided
         if approval_data.notes:
             # Could store rejection notes in a dedicated field if needed
@@ -805,7 +874,7 @@ async def approve_contractor(
             "message": "Contractor rejected - consultant can now edit and resubmit CDS & CS forms",
             "contractor_id": contractor.id,
             "approved": False,
-            "status": "cds_cs_completed"
+            "status": "documents_uploaded"
         }
 
     # APPROVAL: Just set status to APPROVED
@@ -827,8 +896,325 @@ async def approve_contractor(
     }
 
 
+@router.get("/{contractor_id}/work-order")
+async def get_contractor_work_order(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get or generate work order preview for a contractor
+    Returns existing work order or generates a preview without saving
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check if work order already exists for this contractor
+    existing_work_order = db.query(WorkOrder).filter(
+        WorkOrder.contractor_id == contractor_id
+    ).order_by(WorkOrder.created_at.desc()).first()
+
+    if existing_work_order:
+        # Return existing work order
+        return {
+            "id": existing_work_order.id,
+            "work_order_number": existing_work_order.work_order_number,
+            "contractor_id": existing_work_order.contractor_id,
+            "contractor_name": existing_work_order.contractor_name,
+            "client_name": existing_work_order.client_name,
+            "role": existing_work_order.role,
+            "location": existing_work_order.location,
+            "start_date": existing_work_order.start_date,
+            "end_date": existing_work_order.end_date,
+            "duration": existing_work_order.duration,
+            "currency": existing_work_order.currency,
+            "charge_rate": existing_work_order.charge_rate,
+            "pay_rate": existing_work_order.pay_rate,
+            "project_name": existing_work_order.project_name,
+            "business_type": existing_work_order.business_type,
+            "umbrella_company_name": existing_work_order.umbrella_company_name,
+            "status": existing_work_order.status.value
+        }
+
+    # Generate preview from contractor data
+    if not contractor.client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client information is missing for this contractor"
+        )
+
+    client = db.query(Client).filter(Client.id == contractor.client_id).first()
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    # Generate preview work order number
+    work_order_count = db.query(WorkOrder).count()
+    preview_wo_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+
+    # Format dates
+    start_date_str = contractor.start_date if contractor.start_date else datetime.now().strftime("%Y-%m-%d")
+    end_date_str = contractor.end_date if contractor.end_date else None
+
+    # Return preview data
+    return {
+        "id": None,  # Preview has no ID yet
+        "work_order_number": preview_wo_number,
+        "contractor_id": contractor.id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "client_name": client.company_name,
+        "role": contractor.role,
+        "location": contractor.location or "",
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "duration": contractor.duration,
+        "currency": contractor.currency,
+        "charge_rate": contractor.client_charge_rate,
+        "pay_rate": contractor.candidate_pay_rate,
+        "project_name": contractor.project_name,
+        "business_type": contractor.business_type,
+        "umbrella_company_name": contractor.umbrella_company_name,
+        "status": "pending_approval"
+    }
+
+
+@router.get("/{contractor_id}/work-order/pdf")
+async def get_contractor_work_order_pdf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Generate and return work order PDF for preview
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check for existing work order first
+    existing_work_order = db.query(WorkOrder).filter(
+        WorkOrder.contractor_id == contractor_id
+    ).order_by(WorkOrder.created_at.desc()).first()
+
+    if existing_work_order:
+        # Use existing work order data
+        work_order_data = {
+            "work_order_number": existing_work_order.work_order_number,
+            "contractor_name": existing_work_order.contractor_name,
+            "client_name": existing_work_order.client_name,
+            "role": existing_work_order.role,
+            "location": existing_work_order.location,
+            "start_date": existing_work_order.start_date.strftime("%d %B %Y") if existing_work_order.start_date else "N/A",
+            "end_date": existing_work_order.end_date.strftime("%d %B %Y") if existing_work_order.end_date else "N/A",
+            "duration": existing_work_order.duration,
+            "currency": existing_work_order.currency,
+            "charge_rate": existing_work_order.charge_rate,
+            "pay_rate": existing_work_order.pay_rate,
+            "project_name": existing_work_order.project_name,
+            "business_type": existing_work_order.business_type,
+            "umbrella_company_name": existing_work_order.umbrella_company_name
+        }
+    else:
+        # Generate preview from contractor data
+        if not contractor.client_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client information is missing"
+            )
+
+        client = db.query(Client).filter(Client.id == contractor.client_id).first()
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found"
+            )
+
+        # Generate preview work order number
+        work_order_count = db.query(WorkOrder).count()
+        preview_wo_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+
+        # Parse dates
+        start_date = datetime.fromisoformat(contractor.start_date) if contractor.start_date else datetime.now()
+        end_date = datetime.fromisoformat(contractor.end_date) if contractor.end_date else None
+
+        work_order_data = {
+            "work_order_number": preview_wo_number,
+            "contractor_name": f"{contractor.first_name} {contractor.surname}",
+            "client_name": client.company_name,
+            "role": contractor.role,
+            "location": contractor.location or "",
+            "start_date": start_date.strftime("%d %B %Y"),
+            "end_date": end_date.strftime("%d %B %Y") if end_date else "N/A",
+            "duration": contractor.duration,
+            "currency": contractor.currency,
+            "charge_rate": contractor.client_charge_rate,
+            "pay_rate": contractor.candidate_pay_rate,
+            "project_name": contractor.project_name,
+            "business_type": contractor.business_type,
+            "umbrella_company_name": contractor.umbrella_company_name
+        }
+
+    # Generate PDF
+    pdf_buffer = generate_work_order_pdf(work_order_data)
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="work_order_{work_order_data["work_order_number"]}.pdf"'
+        }
+    )
+
+
+@router.post("/{contractor_id}/work-order/approve")
+async def approve_contractor_work_order(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Approve work order and send to client for signature
+    Creates work order if doesn't exist, then sends email to client
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check status - must be approved
+    if contractor.status != ContractorStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contractor must be approved before sending work order to client"
+        )
+
+    # Check if client_id exists
+    if not contractor.client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client information is missing for this contractor"
+        )
+
+    # Get client details
+    client = db.query(Client).filter(Client.id == contractor.client_id).first()
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found"
+        )
+
+    # Check if work order already exists
+    existing_work_order = db.query(WorkOrder).filter(
+        WorkOrder.contractor_id == contractor_id
+    ).order_by(WorkOrder.created_at.desc()).first()
+
+    if existing_work_order and existing_work_order.status == WorkOrderStatus.PENDING_CLIENT_SIGNATURE:
+        # Work order already sent, return success
+        return {
+            "message": "Work order already sent to client",
+            "work_order_id": existing_work_order.id,
+            "work_order_number": existing_work_order.work_order_number,
+            "status": "pending_client_signature"
+        }
+
+    # Generate work order number
+    work_order_count = db.query(WorkOrder).count()
+    work_order_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+
+    # Generate unique signature token for client
+    signature_token = generate_unique_token()
+
+    # Create work order
+    work_order = WorkOrder(
+        id=str(uuid.uuid4()),
+        work_order_number=work_order_number,
+        contractor_id=contractor.id,
+        third_party_id=contractor.third_party_id,
+        title=f"Work Order - {contractor.role}",
+        description=f"Work order for {contractor.first_name} {contractor.surname} at {client.company_name}",
+        location=contractor.location or "",
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
+        client_name=client.company_name,
+        project_name=contractor.project_name,
+        role=contractor.role,
+        duration=contractor.duration,
+        currency=contractor.currency,
+        business_type=contractor.business_type,
+        umbrella_company_name=contractor.umbrella_company_name,
+        start_date=datetime.fromisoformat(contractor.start_date) if contractor.start_date else datetime.now(),
+        end_date=datetime.fromisoformat(contractor.end_date) if contractor.end_date else None,
+        charge_rate=contractor.client_charge_rate,
+        pay_rate=contractor.candidate_pay_rate,
+        status=WorkOrderStatus.PENDING_CLIENT_SIGNATURE,
+        client_signature_token=signature_token,
+        created_by=current_user.id,
+        generated_by=current_user.id,
+        generated_date=datetime.now(timezone.utc)
+    )
+
+    db.add(work_order)
+
+    # Update contractor status
+    contractor.status = ContractorStatus.PENDING_CLIENT_WO_SIGNATURE
+
+    db.commit()
+    db.refresh(work_order)
+    db.refresh(contractor)
+
+    # Send email to client with link to sign work order
+    print(f"[DEBUG] Client ID: {client.id}")
+    print(f"[DEBUG] Client Company Name: {client.company_name}")
+    print(f"[DEBUG] Client Contact Person Name: {client.contact_person_name}")
+    print(f"[DEBUG] Client Contact Person Email: {client.contact_person_email}")
+    client_email = client.contact_person_email if client.contact_person_email else None
+    work_order_link = f"{settings.frontend_url}/sign-work-order/{signature_token}"
+
+    if client_email:
+        try:
+            print(f"[DEBUG] Sending work order email to: {client_email}")
+            email_sent = send_work_order_to_client(
+                client_email=client_email,
+                client_company_name=client.company_name,
+                work_order_number=work_order_number,
+                contractor_name=f"{contractor.first_name} {contractor.surname}",
+                signature_link=work_order_link
+            )
+
+            if email_sent:
+                print(f"[SUCCESS] Work order email sent to {client_email}")
+            else:
+                print(f"[WARNING] Failed to send work order email to {client_email}")
+        except Exception as e:
+            print(f"[ERROR] Exception sending work order email: {str(e)}")
+    else:
+        print(f"[WARNING] No email found for client {client.company_name}")
+
+    return {
+        "message": "Work order approved and sent to client for signature",
+        "work_order_id": work_order.id,
+        "work_order_number": work_order_number,
+        "contractor_id": contractor.id,
+        "status": "pending_client_wo_signature",
+        "client_signature_link": work_order_link
+    }
+
+
 @router.post("/{contractor_id}/send-work-order")
-async def send_work_order_to_client(
+async def send_work_order_to_client_endpoint(
     contractor_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
@@ -911,11 +1297,16 @@ async def send_work_order_to_client(
     db.refresh(contractor)
 
     # Send email to client with link to sign work order
+    print(f"[DEBUG] Client ID: {client.id}")
+    print(f"[DEBUG] Client Company Name: {client.company_name}")
+    print(f"[DEBUG] Client Contact Person Name: {client.contact_person_name}")
+    print(f"[DEBUG] Client Contact Person Email: {client.contact_person_email}")
     client_email = client.contact_person_email if client.contact_person_email else None
     work_order_link = f"{settings.frontend_url}/sign-work-order/{signature_token}"
 
     if client_email:
         try:
+            print(f"[DEBUG] Sending work order email to: {client_email}")
             email_sent = send_work_order_to_client(
                 client_email=client_email,
                 client_company_name=client.company_name,
@@ -1070,11 +1461,11 @@ async def recall_contractor_for_editing(
             detail="Contractor not found"
         )
 
-    # Check status - can only recall from cds_cs_completed
-    if contractor.status != ContractorStatus.CDS_CS_COMPLETED:
+    # Check status - can only recall from pending_review or cds_cs_completed (for backward compatibility)
+    if contractor.status not in [ContractorStatus.PENDING_REVIEW, ContractorStatus.CDS_CS_COMPLETED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only recall contractors that have completed CDS & CS"
+            detail="Can only recall contractors that are pending review or have completed CDS & CS"
         )
 
     # Only allow consultant to recall their own contractors (or admin/superadmin)
@@ -1084,8 +1475,8 @@ async def recall_contractor_for_editing(
             detail="You can only recall your own contractors"
         )
 
-    # Change status back to pending_cds_cs so consultant can edit
-    contractor.status = ContractorStatus.PENDING_CDS_CS
+    # Change status back to documents_uploaded so consultant can edit CDS & CS
+    contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
     contractor.reviewed_date = None  # Clear review date since it's being recalled
     contractor.updated_at = datetime.now(timezone.utc)
 
@@ -1130,26 +1521,23 @@ async def get_contract_pdf(
             detail="This contract has already been processed"
         )
 
-    # Convert contractor model to dictionary
-    contractor_dict = {
+    # Prepare contractor data for PDF generation (5-page consultant contract)
+    cds_data = contractor.cds_form_data or {}
+    contractor_data = {
         'first_name': contractor.first_name,
         'surname': contractor.surname,
-        'email': contractor.email,
-        'dob': contractor.dob,
-        'nationality': contractor.nationality,
-        'role': contractor.role,
-        'client_name': contractor.client_name,
-        'start_date': contractor.start_date,
-        'end_date': contractor.end_date,
-        'duration': contractor.duration,
-        'location': contractor.location,
-        'currency': contractor.currency,
-        'pay_rate': contractor.candidate_pay_rate,
-        'charge_rate': contractor.client_charge_rate,
+        'client_name': cds_data.get('clientName', contractor.client_name),
+        'client_address': cds_data.get('clientAddress', ''),
+        'role': cds_data.get('role', contractor.role),
+        'location': cds_data.get('location', contractor.location),
+        'duration': contractor.duration or cds_data.get('duration', '6 months'),
+        'start_date': contractor.start_date or cds_data.get('startDate', ''),
+        'candidate_pay_rate': contractor.candidate_pay_rate or cds_data.get('dayRate', ''),
+        'currency': contractor.currency or 'USD'
     }
 
-    # Generate PDF
-    pdf_buffer = generate_contract_pdf(contractor_dict)
+    # Generate PDF using the 5-page consultant contract generator
+    pdf_buffer = generate_consultant_contract_pdf(contractor_data)
 
     # Return PDF as streaming response
     return StreamingResponse(
@@ -2016,6 +2404,72 @@ async def approve_uploaded_contract(
     }
 
 
+@router.post("/{contractor_id}/send-contract")
+async def send_contract_to_contractor(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Send contractor's contract for signature after work order is completed
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check status - must be work_order_completed
+    if contractor.status != ContractorStatus.WORK_ORDER_COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Work order must be completed before sending contract. Current status: {contractor.status.value}"
+        )
+
+    # Generate contract token
+    contract_token = generate_unique_token()
+    token_expiry = datetime.now(timezone.utc) + timedelta(days=7)  # 7 days expiry
+
+    # Update contractor with contract token
+    contractor.contract_token = contract_token
+    contractor.token_expiry = token_expiry
+    contractor.sent_date = datetime.now(timezone.utc)
+    contractor.status = ContractorStatus.PENDING_SIGNATURE
+
+    db.commit()
+    db.refresh(contractor)
+
+    # Send email to contractor
+    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    contract_link = f"{settings.frontend_url}/sign-contract/{contract_token}"
+
+    try:
+        email_sent = send_contract_email(
+            contractor_email=contractor.email,
+            contractor_name=contractor_name,
+            contract_token=contract_token,
+            expiry_date=token_expiry
+        )
+
+        if email_sent:
+            print(f"[SUCCESS] Contract email sent to {contractor.email}")
+        else:
+            print(f"[WARNING] Failed to send contract email to {contractor.email}")
+    except Exception as e:
+        print(f"[ERROR] Exception sending contract email: {str(e)}")
+
+    return {
+        "message": "Contract sent to contractor for signature",
+        "contractor_id": contractor.id,
+        "contractor_email": contractor.email,
+        "contract_signature_link": contract_link,
+        "token_expiry": token_expiry.isoformat(),
+        "status": "pending_signature"
+    }
+
+
 @router.get("/public/sign-contract/{contract_token}")
 async def get_contract_for_signature(
     contract_token: str,
@@ -2105,31 +2559,144 @@ async def contractor_sign_contract(
     contractor.signature_type = signature_data.signature_type
     contractor.signature_data = signature_data.signature_data
     contractor.signed_date = datetime.now(timezone.utc)
-    contractor.status = ContractorStatus.SIGNED
-
-    # AUTO-SIGN: Automatically add superadmin signature
-    # Get superadmin user for signature
-    superadmin = db.query(User).filter(User.role == UserRole.SUPERADMIN).first()
-    if superadmin and superadmin.signature_data:
-        contractor.superadmin_signature_type = superadmin.signature_type or "typed"
-        contractor.superadmin_signature_data = superadmin.signature_data
-        print(f"[INFO] Auto-signed with superadmin signature for contractor {contractor.id}")
-    else:
-        print(f"[WARNING] No superadmin signature found for auto-signing contractor {contractor.id}")
+    contractor.status = ContractorStatus.PENDING_SUPERADMIN_SIGNATURE
 
     db.commit()
     db.refresh(contractor)
 
-    # Contract is now fully signed - ready for activation
+    # Contract now awaiting superadmin review and signature
     print(f"[INFO] Contract signed by contractor {contractor.id}")
+    print(f"[INFO] Awaiting superadmin review and signature")
+
+    return {
+        "message": "Contract signed successfully - Awaiting administrator review",
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "signed_date": contractor.signed_date.isoformat(),
+        "status": "pending_superadmin_signature",
+        "next_step": "Administrator will review and sign the contract"
+    }
+
+
+@router.post("/{contractor_id}/superadmin-sign-contract")
+async def superadmin_sign_contract(
+    contractor_id: str,
+    signature_data: SignatureSubmission,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["superadmin"]))
+):
+    """
+    Superadmin reviews and signs the contract after contractor has signed
+    Can use saved signature or upload a new one (custom stamp)
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check status - must be pending superadmin signature
+    if contractor.status != ContractorStatus.PENDING_SUPERADMIN_SIGNATURE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Contract is not awaiting superadmin signature. Current status: {contractor.status.value}"
+        )
+
+    # Check if contractor has already signed
+    if not contractor.signature_data or not contractor.signed_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contractor has not signed the contract yet"
+        )
+
+    # Store superadmin signature
+    contractor.superadmin_signature_type = signature_data.signature_type
+    contractor.superadmin_signature_data = signature_data.signature_data
+    contractor.status = ContractorStatus.SIGNED
+
+    db.commit()
+    db.refresh(contractor)
+
+    # Generate signed PDF with both signatures
+    print(f"[INFO] Generating signed contract PDF with superadmin signature for contractor {contractor.id}")
+    try:
+        # Prepare contractor data
+        cds_data = contractor.cds_form_data or {}
+        contractor_data = {
+            'first_name': contractor.first_name,
+            'surname': contractor.surname,
+            'client_name': cds_data.get('clientName', contractor.client_name),
+            'client_address': cds_data.get('clientAddress', ''),
+            'role': cds_data.get('role', contractor.role),
+            'location': cds_data.get('location', contractor.location),
+            'duration': contractor.duration or cds_data.get('duration', '6 months'),
+            'start_date': contractor.start_date or cds_data.get('startDate', ''),
+            'candidate_pay_rate': contractor.candidate_pay_rate or cds_data.get('dayRate', ''),
+            'currency': contractor.currency or 'USD'
+        }
+
+        # Generate PDF with both signatures
+        pdf_buffer = generate_consultant_contract_pdf(
+            contractor_data,
+            contractor_signature_type=contractor.signature_type,
+            contractor_signature_data=contractor.signature_data,
+            superadmin_signature_type=contractor.superadmin_signature_type,
+            superadmin_signature_data=contractor.superadmin_signature_data,
+            signed_date=contractor.signed_date.strftime('%Y-%m-%d') if contractor.signed_date else None
+        )
+
+        # Upload to Supabase in contractor folder
+        contractor_filename = f"signed_contract_{contractor.first_name}_{contractor.surname}.pdf"
+        contractor_folder = f"contractor-documents/{contractor.id}"
+        contractor_file_url = upload_file(pdf_buffer, contractor_filename, contractor_folder)
+        print(f"[INFO] Uploaded signed contract to contractor folder: {contractor_file_url}")
+
+        # Upload to Supabase in superadmin folder
+        superadmin = current_user
+        superadmin_filename = f"{contractor.first_name}_{contractor.surname}_contract_{contractor.signed_date.strftime('%Y%m%d')}.pdf"
+        superadmin_folder = f"superadmin-contracts/{superadmin.id}"
+        pdf_buffer.seek(0)  # Reset buffer for second upload
+        superadmin_file_url = upload_file(pdf_buffer, superadmin_filename, superadmin_folder)
+        print(f"[INFO] Uploaded signed contract to superadmin folder: {superadmin_file_url}")
+
+        # Update superadmin's contracts_signed array
+        contracts_signed = superadmin.contracts_signed or []
+        contracts_signed.append({
+            'contractor_id': contractor.id,
+            'contractor_name': f"{contractor.first_name} {contractor.surname}",
+            'contract_url': superadmin_file_url,
+            'signed_date': contractor.signed_date.isoformat()
+        })
+        superadmin.contracts_signed = contracts_signed
+
+        # Update contractor with signed contract URL
+        contractor.signed_contract_url = contractor_file_url
+
+        db.commit()
+        db.refresh(contractor)
+        db.refresh(superadmin)
+
+        print(f"[INFO] Signed contract saved successfully")
+
+    except Exception as e:
+        print(f"[ERROR] Failed to generate/upload signed contract: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate signed contract: {str(e)}"
+        )
+
+    # Contract is now fully signed - ready for activation
+    print(f"[INFO] Contract fully signed for contractor {contractor.id}")
     print(f"[INFO] Ready for account activation")
 
     return {
-        "message": "Contract signed successfully - Your account is ready for activation",
+        "message": "Contract signed successfully - Ready for activation",
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
         "signed_date": contractor.signed_date.isoformat(),
+        "signed_contract_url": contractor.signed_contract_url,
         "status": "signed",
-        "next_step": "Account activation by administrator"
+        "next_step": "Activate contractor account"
     }
 
 

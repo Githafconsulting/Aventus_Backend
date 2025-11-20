@@ -5,6 +5,7 @@ from supabase import create_client, Client
 from app.config import settings
 from fastapi import UploadFile
 from typing import Optional
+from io import BytesIO
 import uuid
 from datetime import datetime
 
@@ -91,3 +92,43 @@ class SupabaseStorage:
 
 # Global storage instance
 storage = SupabaseStorage()
+
+
+def upload_file(file_buffer: BytesIO, filename: str, folder: str = "") -> str:
+    """
+    Upload a file buffer (like PDF) to Supabase Storage
+
+    Args:
+        file_buffer: BytesIO buffer containing file data
+        filename: Name for the file
+        folder: Optional folder path (e.g., "contractor-documents/123")
+
+    Returns:
+        Public URL of the uploaded file
+    """
+    try:
+        # Create full path
+        file_path = f"{folder}/{filename}" if folder else filename
+
+        # Get file content
+        file_buffer.seek(0)
+        content = file_buffer.read()
+
+        # Determine content type based on file extension
+        content_type = "application/pdf" if filename.endswith('.pdf') else "application/octet-stream"
+
+        # Upload to Supabase Storage
+        response = storage.client.storage.from_(storage.bucket).upload(
+            file_path,
+            content,
+            file_options={"content-type": content_type, "upsert": "true"}
+        )
+
+        # Get public URL
+        public_url = storage.client.storage.from_(storage.bucket).get_public_url(file_path)
+
+        return public_url
+
+    except Exception as e:
+        print(f"Error uploading file buffer: {str(e)}")
+        raise Exception(f"Failed to upload file: {str(e)}")

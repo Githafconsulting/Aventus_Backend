@@ -32,5 +32,8 @@ class User(Base):
     signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     signature_data = Column(String, nullable=True)  # Name or base64 image
 
+    # Signed Contracts (for superadmin document folder)
+    contracts_signed = Column(JSON, nullable=True)  # Array of {contractor_id, contractor_name, contract_url, signed_date}
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
