@@ -322,5 +322,87 @@ class ContractorDetailResponse(BaseModel):
     # Costing sheet data
     costing_sheet_data: Optional[Dict[str, Any]] = None
 
+    # Management Company fields
+    business_type: Optional[str] = None
+    third_party_id: Optional[str] = None
+    umbrella_company_name: Optional[str] = None
+    registered_address: Optional[str] = None
+    management_address_line2: Optional[str] = None
+    management_address_line3: Optional[str] = None
+    company_vat_no: Optional[str] = None
+    company_name: Optional[str] = None
+    account_number: Optional[str] = None
+    iban_number: Optional[str] = None
+    company_reg_no: Optional[str] = None
+
+    # Placement Details
+    client_id: Optional[str] = None
+    project_name: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    duration: Optional[str] = None
+    client_charge_rate: Optional[str] = None
+    candidate_pay_rate: Optional[str] = None
+    candidate_basic_salary: Optional[str] = None
+    contractor_costs: Optional[str] = None
+
+    # Monthly Costs
+    management_company_charges: Optional[str] = None
+    taxes: Optional[str] = None
+    bank_fees: Optional[str] = None
+    fx: Optional[str] = None
+    nationalisation: Optional[str] = None
+
+    # Provisions
+    eosb: Optional[str] = None
+    vacation_pay: Optional[str] = None
+    sick_leave: Optional[str] = None
+    other_provision: Optional[str] = None
+
+    # One Time Costs
+    flights: Optional[str] = None
+    visa: Optional[str] = None
+    medical_insurance: Optional[str] = None
+    family_costs: Optional[str] = None
+    other_one_time_costs: Optional[str] = None
+
+    # Additional Info
+    upfront_invoices: Optional[str] = None
+    security_deposit: Optional[str] = None
+    laptop_provider: Optional[str] = None
+    other_notes: Optional[str] = None
+
+    # Summary Calculations
+    contractor_total_fixed_costs: Optional[str] = None
+    estimated_monthly_gp: Optional[str] = None
+
+    # Aventus Deal
+    consultant: Optional[str] = None
+    any_splits: Optional[str] = None
+    resourcer: Optional[str] = None
+
+    # Invoice Details
+    timesheet_required: Optional[str] = None
+    timesheet_approver_name: Optional[str] = None
+    invoice_email: Optional[str] = None
+    client_contact: Optional[str] = None
+    invoice_address_line1: Optional[str] = None
+    invoice_address_line2: Optional[str] = None
+    invoice_address_line3: Optional[str] = None
+    invoice_address_line4: Optional[str] = None
+    invoice_po_box: Optional[str] = None
+    invoice_tax_number: Optional[str] = None
+    contractor_pay_frequency: Optional[str] = None
+    client_invoice_frequency: Optional[str] = None
+    client_payment_terms: Optional[str] = None
+    invoicing_preferences: Optional[str] = None
+    invoice_instructions: Optional[str] = None
+    supporting_docs_required: Optional[str] = None
+    po_required: Optional[str] = None
+    po_number: Optional[str] = None
+
+    # Pay Details
+    umbrella_or_direct: Optional[str] = None
+
     class Config:
         from_attributes = True

@@ -11,6 +11,8 @@ class WorkOrderStatus(str, enum.Enum):
     PENDING_APPROVAL = "pending_approval"
     APPROVED = "approved"
     SENT = "sent"
+    PENDING_CLIENT_SIGNATURE = "pending_client_signature"
+    CLIENT_SIGNED = "client_signed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -61,6 +63,12 @@ class WorkOrder(Base):
     # Additional Info
     notes = Column(String, nullable=True)
     documents = Column(JSON, default=list)  # Store uploaded document URLs and metadata
+
+    # Client Signature
+    client_signature_token = Column(String, unique=True, nullable=True, index=True)
+    client_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    client_signature_data = Column(String, nullable=True)  # Name or base64 image
+    client_signed_date = Column(DateTime, nullable=True)
 
     # Audit fields
     created_by = Column(String, ForeignKey("users.id"), nullable=False)

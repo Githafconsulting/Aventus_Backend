@@ -7,10 +7,12 @@ from app.models.contractor import Contractor
 from app.models.third_party import ThirdParty
 from app.schemas.work_order import WorkOrderCreate, WorkOrderUpdate, WorkOrderResponse
 from app.models.user import User, UserRole
+from app.models.contractor import Contractor, ContractorStatus
 from app.utils.auth import get_current_active_user, require_role
 from app.utils.storage import storage
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/work-orders", tags=["work-orders"])
 
@@ -314,3 +316,117 @@ async def update_work_order_status(
     db.refresh(work_order)
 
     return work_order
+
+
+# ============= PUBLIC ENDPOINTS (No Auth Required) =============
+
+class ClientSignatureData(BaseModel):
+    signature_type: str  # "typed" or "drawn"
+    signature_data: str  # Name for typed, base64 for drawn
+
+
+@router.get("/public/by-token/{signature_token}")
+async def get_work_order_by_token(
+    signature_token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    PUBLIC ENDPOINT: Get work order by signature token (for client signature page)
+    No authentication required
+    """
+    work_order = db.query(WorkOrder).filter(
+        WorkOrder.client_signature_token == signature_token
+    ).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found or link is invalid"
+        )
+
+    # Check if already signed
+    if work_order.status == WorkOrderStatus.CLIENT_SIGNED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This work order has already been signed"
+        )
+
+    # Return work order details for display
+    return {
+        "work_order_number": work_order.work_order_number,
+        "contractor_name": work_order.contractor_name,
+        "client_name": work_order.client_name,
+        "role": work_order.role,
+        "location": work_order.location,
+        "start_date": work_order.start_date.isoformat() if work_order.start_date else None,
+        "end_date": work_order.end_date.isoformat() if work_order.end_date else None,
+        "duration": work_order.duration,
+        "currency": work_order.currency,
+        "charge_rate": work_order.charge_rate,
+        "pay_rate": work_order.pay_rate,
+        "project_name": work_order.project_name,
+        "business_type": work_order.business_type,
+        "umbrella_company_name": work_order.umbrella_company_name,
+        "status": work_order.status.value,
+        "work_order_id": work_order.id
+    }
+
+
+@router.post("/public/sign/{signature_token}")
+async def sign_work_order(
+    signature_token: str,
+    signature_data: ClientSignatureData,
+    db: Session = Depends(get_db)
+):
+    """
+    PUBLIC ENDPOINT: Client signs work order using signature token
+    No authentication required
+    """
+    work_order = db.query(WorkOrder).filter(
+        WorkOrder.client_signature_token == signature_token
+    ).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found or link is invalid"
+        )
+
+    # Check if already signed
+    if work_order.status == WorkOrderStatus.CLIENT_SIGNED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This work order has already been signed"
+        )
+
+    # Check if work order is in correct status
+    if work_order.status != WorkOrderStatus.PENDING_CLIENT_SIGNATURE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This work order is not pending signature"
+        )
+
+    # Update work order with signature
+    work_order.client_signature_type = signature_data.signature_type
+    work_order.client_signature_data = signature_data.signature_data
+    work_order.client_signed_date = datetime.now(timezone.utc)
+    work_order.status = WorkOrderStatus.CLIENT_SIGNED
+
+    # Update contractor status to work_order_completed
+    contractor = db.query(Contractor).filter(
+        Contractor.id == work_order.contractor_id
+    ).first()
+
+    if contractor:
+        contractor.status = ContractorStatus.WORK_ORDER_COMPLETED
+        print(f"[INFO] Contractor {contractor.id} status updated to WORK_ORDER_COMPLETED")
+
+    db.commit()
+    db.refresh(work_order)
+
+    return {
+        "message": "Work order signed successfully",
+        "work_order_number": work_order.work_order_number,
+        "signed_date": work_order.client_signed_date.isoformat(),
+        "status": "work_order_completed"
+    }

@@ -17,6 +17,11 @@ class ContractorStatus(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+    PENDING_CLIENT_WO_SIGNATURE = "pending_client_wo_signature"
+    WORK_ORDER_COMPLETED = "work_order_completed"
+    PENDING_CONTRACT_UPLOAD = "pending_contract_upload"
+    CONTRACT_UPLOADED = "contract_uploaded"
+    CONTRACT_APPROVED = "contract_approved"
     PENDING_SIGNATURE = "pending_signature"
     SIGNED = "signed"
     ACTIVE = "active"
@@ -71,6 +76,14 @@ class Contractor(Base):
     emirates_id_document = Column(String, nullable=True)
     degree_document = Column(String, nullable=True)
     other_documents = Column(JSON, nullable=True)  # Array of additional documents
+
+    # Client Contract Upload Workflow
+    contract_upload_token = Column(String, unique=True, nullable=True, index=True)
+    contract_upload_token_expiry = Column(DateTime(timezone=True), nullable=True)
+    client_uploaded_contract = Column(String, nullable=True)  # Path to contract uploaded by client
+    contract_uploaded_date = Column(DateTime(timezone=True), nullable=True)
+    contract_approved_date = Column(DateTime(timezone=True), nullable=True)
+    contract_approved_by = Column(String, nullable=True)  # User ID of superadmin who approved contract
 
     # Superadmin Signature
     superadmin_signature_type = Column(String, nullable=True)  # "typed" or "drawn"

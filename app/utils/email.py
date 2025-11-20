@@ -1977,3 +1977,200 @@ def send_third_party_contractor_request(
     except Exception as e:
         print(f"Failed to send third party request: {str(e)}")
         return False
+
+
+def send_work_order_to_client(
+    client_email: str,
+    client_company_name: str,
+    work_order_number: str,
+    contractor_name: str,
+    signature_link: str
+) -> bool:
+    """
+    Send work order to client for signature
+    """
+    logo_url = settings.logo_url
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Work Order for Signature</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+                padding: 20px 0;
+            }}
+            .email-wrapper {{
+                max-width: 560px;
+                margin: 0 auto;
+                background-color: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%);
+                padding: 40px 30px;
+                text-align: center;
+            }}
+            .header img {{
+                max-width: 150px;
+                height: auto;
+                margin-bottom: 20px;
+            }}
+            .header h1 {{
+                color: #ffffff;
+                font-size: 28px;
+                font-weight: 700;
+                margin: 0;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .greeting {{
+                font-size: 18px;
+                color: #1a1a1a;
+                margin-bottom: 20px;
+            }}
+            .message {{
+                font-size: 16px;
+                color: #4a5568;
+                margin-bottom: 20px;
+                line-height: 1.8;
+            }}
+            .info-box {{
+                background-color: #f7fafc;
+                border-left: 4px solid #FF6B00;
+                padding: 20px;
+                margin: 25px 0;
+                border-radius: 4px;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                font-size: 15px;
+                color: #2d3748;
+            }}
+            .info-box strong {{
+                color: #1a1a1a;
+                font-weight: 600;
+            }}
+            .button-container {{
+                text-align: center;
+                margin: 35px 0;
+            }}
+            .button {{
+                display: inline-block;
+                padding: 16px 40px;
+                background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%);
+                color: #ffffff !important;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                box-shadow: 0 4px 12px rgba(255, 107, 0, 0.3);
+                transition: all 0.3s ease;
+            }}
+            .button:hover {{
+                box-shadow: 0 6px 16px rgba(255, 107, 0, 0.4);
+                transform: translateY(-2px);
+            }}
+            .divider {{
+                height: 1px;
+                background-color: #e2e8f0;
+                margin: 30px 0;
+            }}
+            .footer {{
+                background-color: #f7fafc;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #e2e8f0;
+            }}
+            .footer p {{
+                margin: 5px 0;
+                font-size: 14px;
+                color: #718096;
+            }}
+            .footer a {{
+                color: #FF6B00;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                {f'<img src="{logo_url}" alt="Aventus Resources Logo">' if logo_url else ''}
+                <h1>Work Order Signature Request</h1>
+            </div>
+
+            <div class="content">
+                <p class="greeting">Dear {client_company_name} Team,</p>
+
+                <p class="message">
+                    We are pleased to present a work order for your review and signature. This work order is for
+                    <strong>{contractor_name}</strong> who will be providing services for your organization.
+                </p>
+
+                <div class="info-box">
+                    <p><strong>Work Order Number:</strong> {work_order_number}</p>
+                    <p><strong>Contractor:</strong> {contractor_name}</p>
+                    <p><strong>Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Your Signature</span></p>
+                </div>
+
+                <p class="message">
+                    Please review the work order details carefully. Once you are satisfied with the terms,
+                    you can sign the document electronically using the button below.
+                </p>
+
+                <div class="button-container">
+                    <a href="{signature_link}" class="button">
+                        ✍️ Review & Sign Work Order
+                    </a>
+                </div>
+
+                <div class="divider"></div>
+
+                <p class="message" style="font-size: 14px; color: #718096;">
+                    <strong>Need Help?</strong><br>
+                    If you have any questions or need clarification about this work order, please don't hesitate
+                    to contact us. We're here to help!
+                </p>
+            </div>
+
+            <div class="footer">
+                <p><strong>Aventus Resources</strong></p>
+                <p>Email: <a href="mailto:info@aventusresources.com">info@aventusresources.com</a></p>
+                <p style="margin-top: 15px; font-size: 12px; color: #a0aec0;">
+                    This is an automated email. Please do not reply directly to this message.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        params = {
+            "from": settings.from_email,
+            "to": [client_email],
+            "subject": f"Work Order {work_order_number} - Signature Required",
+            "html": html_content,
+        }
+
+        email = resend.Emails.send(params)
+        print(f"Work order sent to client {client_email}: {email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send work order to client: {str(e)}")
+        return False
