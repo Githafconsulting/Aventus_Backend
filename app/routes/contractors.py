@@ -148,15 +148,39 @@ async def list_contractors(
 async def get_signed_contract(
     contractor_id: str,
     token: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     """
     Admin views the signed contract PDF
     Supports both Authorization header and query parameter token
     """
-    # Verify user has admin or superadmin role
-    if current_user.role not in ["admin", "superadmin"]:
+    # Authenticate via token query parameter (for direct links)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+
+    # Verify JWT token
+    from jose import JWTError, jwt
+    from app.config import settings
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+
+    # Get user and verify role
+    user = db.query(User).filter(User.email == email).first()
+    if not user or user.role not in ["admin", "superadmin", "consultant"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view signed contracts"
@@ -192,8 +216,15 @@ async def get_signed_contract(
         'currency': contractor.currency or 'USD'
     }
 
-    # Generate PDF with the 5-page consultant contract generator
-    pdf_buffer = generate_consultant_contract_pdf(contractor_data)
+    # Generate PDF with the 5-page consultant contract generator including signatures
+    pdf_buffer = generate_consultant_contract_pdf(
+        contractor_data,
+        contractor_signature_type=contractor.signature_type,
+        contractor_signature_data=contractor.signature_data,
+        superadmin_signature_type=contractor.superadmin_signature_type,
+        superadmin_signature_data=contractor.superadmin_signature_data,
+        signed_date=contractor.signed_date.strftime('%Y-%m-%d') if contractor.signed_date else None
+    )
 
     # Return PDF as streaming response
     return StreamingResponse(
@@ -1514,8 +1545,8 @@ async def get_contract_pdf(
             detail="This contract link has expired"
         )
 
-    # Check if already signed
-    if contractor.status not in [ContractorStatus.PENDING_SIGNATURE]:
+    # Check if contract is available for viewing (contractor or superadmin can view)
+    if contractor.status not in [ContractorStatus.PENDING_SIGNATURE, ContractorStatus.PENDING_SUPERADMIN_SIGNATURE]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This contract has already been processed"
@@ -1537,7 +1568,19 @@ async def get_contract_pdf(
     }
 
     # Generate PDF using the 5-page consultant contract generator
-    pdf_buffer = generate_consultant_contract_pdf(contractor_data)
+    # If contractor has signed, include their signature in the preview
+    if contractor.status == ContractorStatus.PENDING_SUPERADMIN_SIGNATURE and contractor.signature_data:
+        pdf_buffer = generate_consultant_contract_pdf(
+            contractor_data,
+            contractor_signature_type=contractor.signature_type,
+            contractor_signature_data=contractor.signature_data,
+            superadmin_signature_type=None,
+            superadmin_signature_data=None,
+            signed_date=contractor.signed_date.strftime('%Y-%m-%d') if contractor.signed_date else None
+        )
+    else:
+        # Contractor hasn't signed yet, show blank contract
+        pdf_buffer = generate_consultant_contract_pdf(contractor_data)
 
     # Return PDF as streaming response
     return StreamingResponse(
@@ -2697,6 +2740,40 @@ async def superadmin_sign_contract(
         "signed_contract_url": contractor.signed_contract_url,
         "status": "signed",
         "next_step": "Activate contractor account"
+    }
+
+
+@router.post("/{contractor_id}/reset-to-pending-signature")
+async def reset_contractor_to_pending_signature(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["superadmin"]))
+):
+    """
+    Reset contractor status to pending_superadmin_signature for testing
+    SUPERADMIN ONLY - Use this to test the signing workflow
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Reset status and clear superadmin signature
+    contractor.status = ContractorStatus.PENDING_SUPERADMIN_SIGNATURE
+    contractor.superadmin_signature_type = None
+    contractor.superadmin_signature_data = None
+    contractor.signed_contract_url = None
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Contractor status reset to pending_superadmin_signature",
+        "contractor_id": contractor.id,
+        "status": contractor.status.value
     }
 
 

@@ -109,130 +109,174 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
         logo = Image(logo_path, width=60*mm, height=15*mm)
         logo.hAlign = 'CENTER'
         elements.append(logo)
-        elements.append(Spacer(1, 10*mm))
+        elements.append(Spacer(1, 4*mm))
 
-    # Add title
-    elements.append(Paragraph("WORK ORDER", header_style))
-    elements.append(Paragraph(f"Work Order Number: {work_order_number}", title_style))
-    elements.append(Spacer(1, 5*mm))
+    # Add title - Appendix 1
+    appendix_style = ParagraphStyle(
+        'Appendix',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=TA_CENTER,
+        spaceAfter=4,
+        fontName='Helvetica'
+    )
+    elements.append(Paragraph("Appendix \"1\"", appendix_style))
 
-    # Work Order Date
-    current_date = datetime.now().strftime("%d %B %Y")
-    elements.append(Paragraph(f"<b>Date:</b> {current_date}", body_style))
-    elements.append(Spacer(1, 8*mm))
+    title_style = ParagraphStyle(
+        'Title',
+        parent=styles['Normal'],
+        fontSize=16,
+        alignment=TA_CENTER,
+        spaceAfter=12,
+        fontName='Helvetica-Bold',
+        textColor=orange
+    )
+    elements.append(Paragraph("CONTRACTOR WORK ORDER", title_style))
 
-    # Contractor Details Section
-    elements.append(Paragraph("CONTRACTOR DETAILS", section_style))
-    contractor_table_data = [
-        [Paragraph("<b>Contractor Name:</b>", body_style), Paragraph(contractor_name, body_style)],
-        [Paragraph("<b>Business Type:</b>", body_style), Paragraph(business_type, body_style)],
-    ]
-    if business_type and business_type.lower() in ['3rd party', 'umbrella company']:
-        contractor_table_data.append(
-            [Paragraph("<b>Company Name:</b>", body_style), Paragraph(umbrella_company, body_style)]
-        )
+    # Horizontal rule
+    elements.append(Spacer(1, 2*mm))
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 1, colors.grey),
+    ])))
+    elements.append(Spacer(1, 4*mm))
 
-    contractor_table = Table(contractor_table_data, colWidths=[60*mm, 100*mm])
-    contractor_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), light_gray),
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
-    elements.append(contractor_table)
-    elements.append(Spacer(1, 6*mm))
+    # Details and Definitions header
+    elements.append(Paragraph("<b>Details and Definitions</b>", section_style))
+    elements.append(Spacer(1, 3*mm))
 
-    # Assignment Details Section
-    elements.append(Paragraph("ASSIGNMENT DETAILS", section_style))
-    assignment_table_data = [
-        [Paragraph("<b>Client:</b>", body_style), Paragraph(client_name, body_style)],
-        [Paragraph("<b>Job Title/Role:</b>", body_style), Paragraph(role, body_style)],
-    ]
+    # Main details
+    elements.append(Paragraph(f"<b>Contractor:</b> {contractor_name}", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph(f"<b>Location:</b> {location}, or such other site as may be agreed from time to time by parties", body_style))
+    elements.append(Spacer(1, 3*mm))
+
+    # Horizontal rule
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
+    ])))
+    elements.append(Spacer(1, 3*mm))
+
+    # Assignment Term section
+    elements.append(Paragraph("<b>Assignment Term:</b>", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph(f"<b>From:</b> {start_date}", body_style))
+    elements.append(Spacer(1, 0.5*mm))
+    elements.append(Paragraph(f"<b>To:</b> {end_date}", body_style))
+    elements.append(Spacer(1, 0.5*mm))
+    elements.append(Paragraph(f"<b>Duration:</b> {duration}", body_style))
+    elements.append(Spacer(1, 3*mm))
+
+    # Position
+    elements.append(Paragraph(f"<b>Position:</b> {role}", body_style))
+    elements.append(Spacer(1, 3*mm))
+
+    # Horizontal rule
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
+    ])))
+    elements.append(Spacer(1, 3*mm))
+
+    # Assignment details
+    elements.append(Paragraph("<b>Assignment details:</b>", body_style))
+    elements.append(Spacer(1, 1*mm))
     if project_name:
-        assignment_table_data.append(
-            [Paragraph("<b>Project Name:</b>", body_style), Paragraph(project_name, body_style)]
-        )
-    assignment_table_data.extend([
-        [Paragraph("<b>Location:</b>", body_style), Paragraph(location, body_style)],
-        [Paragraph("<b>Start Date:</b>", body_style), Paragraph(start_date, body_style)],
-        [Paragraph("<b>End Date:</b>", body_style), Paragraph(end_date, body_style)],
-        [Paragraph("<b>Duration:</b>", body_style), Paragraph(duration, body_style)],
-    ])
+        elements.append(Paragraph(f"{project_name}", body_style))
+        elements.append(Spacer(1, 0.5*mm))
+    elements.append(Paragraph("<i>(Include the type of work to be carried out)</i>", small_style))
+    elements.append(Spacer(1, 3*mm))
 
-    assignment_table = Table(assignment_table_data, colWidths=[60*mm, 100*mm])
-    assignment_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), light_gray),
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
-    elements.append(assignment_table)
-    elements.append(Spacer(1, 6*mm))
+    # Horizontal rule
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
+    ])))
+    elements.append(Spacer(1, 3*mm))
 
-    # Financial Details Section
-    elements.append(Paragraph("FINANCIAL DETAILS", section_style))
-    financial_table_data = [
-        [Paragraph("<b>Currency:</b>", body_style), Paragraph(currency, body_style)],
-        [Paragraph("<b>Pay Rate:</b>", body_style), Paragraph(f"{pay_rate} {currency}", body_style)],
-        [Paragraph("<b>Charge Rate:</b>", body_style), Paragraph(f"{charge_rate} {currency}", body_style)],
-    ]
+    # Financial and other details
+    elements.append(Paragraph("<b>Overtime:</b> N/A", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph(f"<b>Charge Rate:</b> {charge_rate} {currency} per professional month worked", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph(f"<b>Currency:</b> {currency}", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph("<b>Termination Notice Period:</b> TBC", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph("<b>Payment terms:</b> As per agreement, from date of invoice", body_style))
+    elements.append(Spacer(1, 1*mm))
+    elements.append(Paragraph("<b>Expenses:</b> All expenses approved in writing by the Client either to the Contractor or to Aventus", body_style))
+    elements.append(Spacer(1, 4*mm))
 
-    financial_table = Table(financial_table_data, colWidths=[60*mm, 100*mm])
-    financial_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), light_gray),
-        ('PADDING', (0, 0), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-    ]))
-    elements.append(financial_table)
-    elements.append(Spacer(1, 10*mm))
-
-    # Terms and Conditions
-    elements.append(Paragraph("TERMS AND CONDITIONS", section_style))
-    terms_text = """
-    <b>1. Scope of Work:</b> The contractor agrees to perform the services as described in this work order
-    for the specified client and project.<br/><br/>
-
-    <b>2. Payment Terms:</b> Payment will be made according to the agreed pay rate and frequency as per
-    the main consultant agreement.<br/><br/>
-
-    <b>3. Duration:</b> This work order is valid for the specified duration unless terminated earlier by
-    either party with appropriate notice.<br/><br/>
-
-    <b>4. Confidentiality:</b> The contractor must maintain confidentiality of all client and project information
-    as per the main consultant agreement.<br/><br/>
-
-    <b>5. Compliance:</b> The contractor must comply with all client policies and procedures during the assignment.
-    """
-    elements.append(Paragraph(terms_text, small_style))
-    elements.append(Spacer(1, 10*mm))
+    # Horizontal rule before signatures
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 1, colors.grey),
+    ])))
+    elements.append(Spacer(1, 4*mm))
 
     # Signature Section
-    elements.append(Paragraph("SIGNATURES", section_style))
-    elements.append(Spacer(1, 5*mm))
+    sig_header_style = ParagraphStyle(
+        'SigHeader',
+        parent=body_style,
+        fontSize=11,
+        fontName='Helvetica-Bold',
+        spaceAfter=4
+    )
 
-    signature_table_data = [
-        [
-            Paragraph("<b>Aventus Resources</b><br/>_____________________<br/>Authorized Signature<br/><br/>Date: _____________", body_style),
-            Paragraph(f"<b>{contractor_name}</b><br/>_____________________<br/>Contractor Signature<br/><br/>Date: _____________", body_style)
-        ]
+    # Two-column signature layout
+    # Left column - Aventus
+    aventus_col = [
+        Paragraph("<b>FOR AVENTUS CONTRACTOR MANAGEMENT:</b>", sig_header_style),
+        Spacer(1, 2*mm),
+        Paragraph("Signed: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Name: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Position: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Date: _____________________________", body_style),
     ]
 
-    signature_table = Table(signature_table_data, colWidths=[80*mm, 80*mm])
+    # Right column - Contractor
+    contractor_col = [
+        Paragraph(f"<b>CONTRACTOR ACKNOWLEDGMENT:</b>", sig_header_style),
+        Spacer(1, 2*mm),
+        Paragraph("Signed: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Name: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Position: _____________________________", body_style),
+        Spacer(1, 1*mm),
+        Paragraph("Date: _____________________________", body_style),
+    ]
+
+    # Create side-by-side table
+    signature_table = Table([[aventus_col, contractor_col]], colWidths=[75*mm, 75*mm])
     signature_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('PADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
     ]))
     elements.append(signature_table)
-    elements.append(Spacer(1, 10*mm))
+    elements.append(Spacer(1, 5*mm))
+
+    # Horizontal rule before footer
+    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
+    ])))
+    elements.append(Spacer(1, 2*mm))
 
     # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=small_style,
+        alignment=TA_CENTER,
+        fontSize=8,
+        textColor=colors.grey
+    )
     footer_text = """
-    <b>Aventus Resources</b><br/>
-    Email: info@aventusresources.com | Phone: +971 XXX XXXX<br/>
-    This is a computer-generated document and does not require a physical signature unless specified.
+    <b>AVENTUS CONTRACTOR MANAGEMENT</b><br/>
+    Email: contact@aventus.com<br/>
+    <i>This is a legally binding agreement. Please read carefully before signing.</i>
     """
-    elements.append(Paragraph(footer_text, small_style))
+    elements.append(Paragraph(footer_text, footer_style))
 
     # Build PDF
     doc.build(elements)

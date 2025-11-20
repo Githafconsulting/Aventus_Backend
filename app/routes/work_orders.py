@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
@@ -10,6 +11,7 @@ from app.models.user import User, UserRole
 from app.models.contractor import Contractor, ContractorStatus
 from app.utils.auth import get_current_active_user, require_role
 from app.utils.storage import storage
+from app.utils.work_order_pdf_generator import generate_work_order_pdf
 from datetime import datetime, timezone
 import uuid
 from pydantic import BaseModel
@@ -370,6 +372,55 @@ async def get_work_order_by_token(
         "status": work_order.status.value,
         "work_order_id": work_order.id
     }
+
+
+@router.get("/public/pdf/{signature_token}")
+async def get_work_order_pdf_by_token(
+    signature_token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    PUBLIC ENDPOINT: Get work order PDF by signature token
+    No authentication required
+    """
+    work_order = db.query(WorkOrder).filter(
+        WorkOrder.client_signature_token == signature_token
+    ).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found or link is invalid"
+        )
+
+    # Prepare data for PDF
+    work_order_data = {
+        "work_order_number": work_order.work_order_number,
+        "contractor_name": work_order.contractor_name,
+        "client_name": work_order.client_name,
+        "role": work_order.role,
+        "location": work_order.location,
+        "start_date": work_order.start_date.strftime('%d %B %Y') if work_order.start_date else '',
+        "end_date": work_order.end_date.strftime('%d %B %Y') if work_order.end_date else '',
+        "duration": work_order.duration or '',
+        "currency": work_order.currency or 'AED',
+        "charge_rate": work_order.charge_rate or '',
+        "pay_rate": work_order.pay_rate or '',
+        "project_name": work_order.project_name or '',
+        "business_type": work_order.business_type or '',
+        "umbrella_company_name": work_order.umbrella_company_name or '',
+    }
+
+    # Generate PDF
+    pdf_buffer = generate_work_order_pdf(work_order_data)
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename=work_order_{work_order.work_order_number}.pdf"
+        }
+    )
 
 
 @router.post("/public/sign/{signature_token}")

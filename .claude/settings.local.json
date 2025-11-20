@@ -50,7 +50,18 @@
       "Bash(del \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\routes\\contractors.py.tmp\")",
       "Bash(wmic process where \"CommandLine like ''%uvicorn%'' or (name=''python.exe'' and CommandLine like ''%main%'')\" get ProcessId,CommandLine)",
       "Bash(wmic process where \"ProcessId=16736\" delete)",
-      "Bash(wmic process where \"ProcessId=8292\" delete)"
+      "Bash(wmic process where \"ProcessId=8292\" delete)",
+      "Bash(start /B python:*)",
+      "Bash(wmic process where \"ProcessId=16008\" delete)",
+      "Bash(wmic process where \"ProcessId=24048\" delete)",
+      "Bash(timeout /t 2)",
+      "Bash(wmic process where \"ProcessId=15416\" delete)",
+      "Bash(wmic process where \"ProcessId=2076\" delete)",
+      "Bash(wmic process where \"ProcessId=22180\" delete)",
+      "Bash(wmic process where \"ProcessId=22072\" delete)",
+      "Bash(wmic process:*)",
+      "Bash(del \"C:\\Users\\papcy\\Desktop\\Aventus Backend\\app\\utils\\pdf_generator.py\")",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

@@ -2020,19 +2020,20 @@ def send_work_order_to_client(
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             }}
             .header {{
-                background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%);
-                padding: 40px 30px;
+                background-color: #ffffff;
+                padding: 30px;
                 text-align: center;
+                border-bottom: 2px solid #f0f0f0;
             }}
             .header img {{
-                max-width: 150px;
+                max-width: 130px;
                 height: auto;
-                margin-bottom: 20px;
+                margin-bottom: 15px;
             }}
             .header h1 {{
-                color: #ffffff;
-                font-size: 28px;
-                font-weight: 700;
+                color: #1a1a1a;
+                font-size: 24px;
+                font-weight: 600;
                 margin: 0;
             }}
             .content {{
@@ -2168,9 +2169,22 @@ def send_work_order_to_client(
             "html": html_content,
         }
 
+        print(f"[EMAIL DEBUG] Attempting to send work order email...")
+        print(f"[EMAIL DEBUG] From: {settings.from_email}")
+        print(f"[EMAIL DEBUG] To: {client_email}")
+        print(f"[EMAIL DEBUG] Subject: Work Order {work_order_number} - Signature Required")
+        print(f"[EMAIL DEBUG] Resend API Key: {settings.resend_api_key[:20]}...")
+
         email = resend.Emails.send(params)
-        print(f"Work order sent to client {client_email}: {email}")
+
+        print(f"[EMAIL SUCCESS] Work order sent to client {client_email}")
+        print(f"[EMAIL SUCCESS] Resend response: {email}")
         return True
     except Exception as e:
-        print(f"Failed to send work order to client: {str(e)}")
+        print(f"[EMAIL ERROR] Failed to send work order to client")
+        print(f"[EMAIL ERROR] Error type: {type(e).__name__}")
+        print(f"[EMAIL ERROR] Error message: {str(e)}")
+        import traceback
+        print(f"[EMAIL ERROR] Traceback:")
+        traceback.print_exc()
         return False

@@ -58,7 +58,7 @@ class WorkOrder(Base):
     work_order_content = Column(String, nullable=True)
 
     # Status
-    status = Column(SQLEnum(WorkOrderStatus), default=WorkOrderStatus.DRAFT, nullable=False)
+    status = Column(SQLEnum(WorkOrderStatus, values_callable=lambda x: [e.value for e in x]), default=WorkOrderStatus.DRAFT, nullable=False)
 
     # Additional Info
     notes = Column(String, nullable=True)

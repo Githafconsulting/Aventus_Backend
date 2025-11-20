@@ -483,7 +483,7 @@ def generate_consultant_contract_pdf(
     # Render Superadmin Signature
     if superadmin_signature_data:
         if superadmin_signature_type == "drawn":
-            # Render drawn signature as image
+            # Render drawn signature as image - compact size to sit on line
             try:
                 # Remove data URL prefix if present
                 if superadmin_signature_data.startswith('data:image'):
@@ -491,7 +491,8 @@ def generate_consultant_contract_pdf(
 
                 signature_img_data = base64.b64decode(superadmin_signature_data)
                 signature_img_buffer = BytesIO(signature_img_data)
-                signature_img = Image(signature_img_buffer, width=60*mm, height=20*mm)
+                # Balanced size to be visible while fitting on signature line
+                signature_img = Image(signature_img_buffer, width=60*mm, height=15*mm)
                 elements.append(signature_img)
             except Exception as e:
                 # Fallback to line if image fails
@@ -513,7 +514,7 @@ def generate_consultant_contract_pdf(
     # Render Contractor Signature
     if contractor_signature_data:
         if contractor_signature_type == "drawn":
-            # Render drawn signature as image
+            # Render drawn signature as image - compact size to sit on line
             try:
                 # Remove data URL prefix if present
                 if contractor_signature_data.startswith('data:image'):
@@ -521,7 +522,8 @@ def generate_consultant_contract_pdf(
 
                 signature_img_data = base64.b64decode(contractor_signature_data)
                 signature_img_buffer = BytesIO(signature_img_data)
-                signature_img = Image(signature_img_buffer, width=60*mm, height=20*mm)
+                # Balanced size to be visible while fitting on signature line
+                signature_img = Image(signature_img_buffer, width=60*mm, height=15*mm)
                 elements.append(signature_img)
             except Exception as e:
                 # Fallback to line if image fails
