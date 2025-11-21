@@ -2068,6 +2068,37 @@ async def select_onboarding_route(
     }
 
 
+@router.post("/{contractor_id}/clear-route")
+async def clear_onboarding_route(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Clear the onboarding route selection for a contractor.
+    This allows them to select a different route.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Clear the onboarding route
+    contractor.onboarding_route = None
+    contractor.business_type = None
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Onboarding route cleared successfully",
+        "contractor_id": contractor.id
+    }
+
+
 @router.post("/{contractor_id}/request-quote-sheet")
 async def request_quote_sheet(
     contractor_id: str,
