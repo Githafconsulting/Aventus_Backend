@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import timedelta, datetime
 import uuid
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -254,6 +254,67 @@ async def list_users(
 
     users = query.all()
     return users
+
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: str,
+    user_data: CreateUserRequest,
+    current_user: User = Depends(require_role([UserRole.SUPERADMIN, UserRole.ADMIN])),
+    db: Session = Depends(get_db)
+):
+    """
+    Update a user (admin cannot update superadmin)
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Admin cannot update superadmin accounts
+    if current_user.role == UserRole.ADMIN and user.role == UserRole.SUPERADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin users cannot update superadmin accounts"
+        )
+
+    # Update fields
+    if user_data.name:
+        user.name = user_data.name
+    if user_data.email:
+        # Check if email is already taken by another user
+        existing = db.query(User).filter(User.email == user_data.email, User.id != user_id).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered to another user"
+            )
+        user.email = user_data.email
+    if user_data.phone_number is not None:
+        user.phone_number = user_data.phone_number
+    if user_data.role:
+        # Admin cannot promote user to superadmin
+        if current_user.role == UserRole.ADMIN and user_data.role == "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin users cannot create superadmin accounts"
+            )
+        user.role = UserRole(user_data.role)
+    if user_data.is_active is not None:
+        user.is_active = user_data.is_active
+    if user_data.profile_photo is not None:
+        user.profile_photo = user_data.profile_photo
+    if user_data.permissions is not None:
+        user.permissions = user_data.permissions
+
+    user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+
+    return user
 
 
 @router.delete("/users/{user_id}")
