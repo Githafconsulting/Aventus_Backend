@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = Field(..., min_length=32)
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 480  # 8 hours - for form-heavy app
     refresh_token_expire_days: int = 7
 
     # Database
