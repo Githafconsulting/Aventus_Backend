@@ -57,6 +57,7 @@ class CostingSheetData(BaseModel):
     # Rates & Costs
     client_charge_rate: str
     candidate_pay_rate: str
+    candidate_pay_rate_period: Optional[str] = None
     candidate_basic_salary: Optional[str] = None
     contractor_costs: Optional[str] = None
 
@@ -69,6 +70,7 @@ class CostingSheetData(BaseModel):
 
     # Provisions
     eosb: Optional[str] = None
+    vacation_days: Optional[str] = None
     vacation_pay: Optional[str] = None
     sick_leave: Optional[str] = None
     other_provision: Optional[str] = None
@@ -114,6 +116,7 @@ class CostingSheetData(BaseModel):
 
     # Payment Details
     umbrella_or_direct: Optional[str] = None
+    candidate_bank_name: Optional[str] = None
     candidate_bank_details: Optional[str] = None
     candidate_account_number: Optional[str] = None
     candidate_mobile: Optional[str] = None
@@ -138,6 +141,7 @@ class DocumentUploadData(BaseModel):
     address_line2: Optional[str] = None
     address_line3: Optional[str] = None
     address_line4: Optional[str] = None
+    candidate_bank_name: Optional[str] = None
     candidate_bank_details: Optional[str] = None
     candidate_iban: Optional[str] = None
 
@@ -261,6 +265,7 @@ class ContractorDetailResponse(BaseModel):
     phone: str
     email: str
     dob: Optional[str] = None
+    candidate_bank_name: Optional[str] = None
     candidate_bank_details: Optional[str] = None
     candidate_iban: Optional[str] = None
 
@@ -319,6 +324,9 @@ class ContractorDetailResponse(BaseModel):
     # Onboarding route
     onboarding_route: Optional[str] = None
 
+    # CDS form data (Step 2)
+    cds_form_data: Optional[Dict[str, Any]] = None
+
     # Costing sheet data
     costing_sheet_data: Optional[Dict[str, Any]] = None
 
@@ -343,6 +351,7 @@ class ContractorDetailResponse(BaseModel):
     duration: Optional[str] = None
     client_charge_rate: Optional[str] = None
     candidate_pay_rate: Optional[str] = None
+    candidate_pay_rate_period: Optional[str] = None
     candidate_basic_salary: Optional[str] = None
     contractor_costs: Optional[str] = None
 
@@ -355,6 +364,7 @@ class ContractorDetailResponse(BaseModel):
 
     # Provisions
     eosb: Optional[str] = None
+    vacation_days: Optional[str] = None
     vacation_pay: Optional[str] = None
     sick_leave: Optional[str] = None
     other_provision: Optional[str] = None
@@ -367,14 +377,20 @@ class ContractorDetailResponse(BaseModel):
     other_one_time_costs: Optional[str] = None
 
     # Additional Info
+    laptop_provided_by: Optional[str] = None
+    any_notes: Optional[str] = None
     upfront_invoices: Optional[str] = None
     security_deposit: Optional[str] = None
     laptop_provider: Optional[str] = None
     other_notes: Optional[str] = None
 
     # Summary Calculations
-    contractor_total_fixed_costs: Optional[str] = None
+    total_monthly_costs: Optional[str] = None
+    total_contractor_fixed_costs: Optional[str] = None
+    monthly_contractor_fixed_costs: Optional[str] = None
+    total_contractor_monthly_cost: Optional[str] = None
     estimated_monthly_gp: Optional[str] = None
+    contractor_total_fixed_costs: Optional[str] = None
 
     # Aventus Deal
     consultant: Optional[str] = None
@@ -391,6 +407,7 @@ class ContractorDetailResponse(BaseModel):
     invoice_address_line3: Optional[str] = None
     invoice_address_line4: Optional[str] = None
     invoice_po_box: Optional[str] = None
+    invoice_country: Optional[str] = None
     invoice_tax_number: Optional[str] = None
     contractor_pay_frequency: Optional[str] = None
     client_invoice_frequency: Optional[str] = None

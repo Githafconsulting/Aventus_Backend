@@ -39,8 +39,13 @@ class Timesheet(Base):
 
     # Manager and notes
     manager_name = Column(String, nullable=True)
+    manager_email = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     decline_reason = Column(Text, nullable=True)
+
+    # Review token for manager access
+    review_token = Column(String, unique=True, nullable=True, index=True)
+    review_token_expiry = Column(DateTime, nullable=True)
 
     # File uploads
     timesheet_file_url = Column(String, nullable=True)

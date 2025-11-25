@@ -148,6 +148,7 @@ class Contractor(Base):
     currency = Column(String, nullable=False, default="AED")
     client_charge_rate = Column(String, nullable=True)
     candidate_pay_rate = Column(String, nullable=True)
+    candidate_pay_rate_period = Column(String, nullable=True)  # "day" or "month"
     candidate_basic_salary = Column(String, nullable=True)
     contractor_costs = Column(String, nullable=True)
 
@@ -160,6 +161,7 @@ class Contractor(Base):
 
     # Provisions
     eosb = Column(String, nullable=True)
+    vacation_days = Column(String, nullable=True)
     vacation_pay = Column(String, nullable=True)
     sick_leave = Column(String, nullable=True)
     other_provision = Column(String, nullable=True)
@@ -172,14 +174,20 @@ class Contractor(Base):
     other_one_time_costs = Column(String, nullable=True)
 
     # Additional Info
+    laptop_provided_by = Column(String, nullable=True)  # "Client", "Aventus", "Contractor"
+    any_notes = Column(Text, nullable=True)
     upfront_invoices = Column(String, nullable=True)
     security_deposit = Column(String, nullable=True)
-    laptop_provider = Column(String, nullable=True)
-    other_notes = Column(Text, nullable=True)
+    laptop_provider = Column(String, nullable=True)  # Legacy field
+    other_notes = Column(Text, nullable=True)  # Legacy field
 
     # Summary Calculations
-    contractor_total_fixed_costs = Column(String, nullable=True)
+    total_monthly_costs = Column(String, nullable=True)
+    total_contractor_fixed_costs = Column(String, nullable=True)
+    monthly_contractor_fixed_costs = Column(String, nullable=True)
+    total_contractor_monthly_cost = Column(String, nullable=True)
     estimated_monthly_gp = Column(String, nullable=True)
+    contractor_total_fixed_costs = Column(String, nullable=True)  # Legacy field
 
     # Aventus Deal
     consultant = Column(String, nullable=True)
@@ -196,6 +204,7 @@ class Contractor(Base):
     invoice_address_line3 = Column(String, nullable=True)
     invoice_address_line4 = Column(String, nullable=True)
     invoice_po_box = Column(String, nullable=True)
+    invoice_country = Column(String, nullable=True)
     invoice_tax_number = Column(String, nullable=True)
     contractor_pay_frequency = Column(String, nullable=True)
     client_invoice_frequency = Column(String, nullable=True)
@@ -208,6 +217,7 @@ class Contractor(Base):
 
     # Pay Details
     umbrella_or_direct = Column(String, nullable=True)
+    candidate_bank_name = Column(String, nullable=True)
     candidate_bank_details = Column(String, nullable=True)
     candidate_iban = Column(String, nullable=True)
 

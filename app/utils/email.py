@@ -2188,3 +2188,491 @@ def send_work_order_to_client(
         print(f"[EMAIL ERROR] Traceback:")
         traceback.print_exc()
         return False
+
+
+def send_timesheet_to_manager(
+    manager_email: str,
+    manager_name: str,
+    contractor_name: str,
+    timesheet_month: str,
+    review_link: str,
+    total_days: float,
+    work_days: int,
+    sick_days: int,
+    vacation_days: int,
+    pdf_content: bytes = None,
+    filename: str = None
+) -> bool:
+    """
+    Send timesheet to manager for approval with optional PDF attachment
+    """
+    logo_url = settings.logo_url
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Timesheet Pending Approval</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+                padding: 20px 0;
+            }}
+            .email-wrapper {{
+                max-width: 560px;
+                margin: 0 auto;
+                background-color: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background-color: #ffffff;
+                padding: 30px;
+                text-align: center;
+                border-bottom: 2px solid #f0f0f0;
+            }}
+            .header img {{
+                max-width: 130px;
+                height: auto;
+                margin-bottom: 15px;
+            }}
+            .header h1 {{
+                color: #FF6B00;
+                font-size: 24px;
+                font-weight: 600;
+                margin: 0;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .greeting {{
+                font-size: 18px;
+                color: #1a1a1a;
+                margin-bottom: 20px;
+            }}
+            .message {{
+                font-size: 16px;
+                color: #4a5568;
+                margin-bottom: 20px;
+                line-height: 1.8;
+            }}
+            .info-box {{
+                background-color: #f7fafc;
+                border-left: 4px solid #FF6B00;
+                padding: 20px;
+                margin: 25px 0;
+                border-radius: 4px;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                font-size: 15px;
+                color: #2d3748;
+            }}
+            .info-box strong {{
+                color: #1a1a1a;
+                font-weight: 600;
+            }}
+            .summary-grid {{
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                margin: 20px 0;
+            }}
+            .summary-item {{
+                background-color: #f7fafc;
+                padding: 15px;
+                border-radius: 6px;
+                text-align: center;
+            }}
+            .summary-item .label {{
+                font-size: 12px;
+                color: #718096;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .summary-item .value {{
+                font-size: 24px;
+                font-weight: 700;
+                color: #FF6B00;
+                margin-top: 5px;
+            }}
+            .button-container {{
+                text-align: center;
+                margin: 35px 0;
+            }}
+            .button {{
+                display: inline-block;
+                padding: 16px 40px;
+                background: linear-gradient(135deg, #FF6B00 0%, #FF8C00 100%);
+                color: #ffffff !important;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                box-shadow: 0 4px 12px rgba(255, 107, 0, 0.3);
+            }}
+            .divider {{
+                height: 1px;
+                background-color: #e2e8f0;
+                margin: 30px 0;
+            }}
+            .footer {{
+                background-color: #f7fafc;
+                padding: 30px;
+                text-align: center;
+                border-top: 1px solid #e2e8f0;
+            }}
+            .footer p {{
+                margin: 5px 0;
+                font-size: 14px;
+                color: #718096;
+            }}
+            .footer a {{
+                color: #FF6B00;
+                text-decoration: none;
+            }}
+            .action-notice {{
+                background-color: #fef3c7;
+                border-left: 3px solid #f59e0b;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }}
+            .action-notice p {{
+                margin: 0;
+                color: #92400e;
+                font-size: 14px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                {f'<img src="{logo_url}" alt="{settings.company_name} Logo">' if logo_url else ''}
+                <h1>Timesheet Pending Approval</h1>
+            </div>
+
+            <div class="content">
+                <p class="greeting">Hello {manager_name},</p>
+
+                <p class="message">
+                    A timesheet has been submitted for your review and approval.
+                </p>
+
+                <div class="info-box">
+                    <p><strong>Contractor:</strong> {contractor_name}</p>
+                    <p><strong>Period:</strong> {timesheet_month}</p>
+                    <p><strong>Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Your Approval</span></p>
+                </div>
+
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="label">Total Days</div>
+                        <div class="value">{total_days}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Work Days</div>
+                        <div class="value">{work_days}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Sick Days</div>
+                        <div class="value">{sick_days}</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="label">Vacation</div>
+                        <div class="value">{vacation_days}</div>
+                    </div>
+                </div>
+
+                <div class="action-notice">
+                    <p><strong>Action Required:</strong> Please review the timesheet and approve or decline it.</p>
+                </div>
+
+                <div class="button-container">
+                    <a href="{review_link}" class="button">
+                        Review & Approve Timesheet
+                    </a>
+                </div>
+
+                <div class="divider"></div>
+
+                <p class="message" style="font-size: 14px; color: #718096;">
+                    If you have any questions about this timesheet, please contact the contractor directly or reach out to your {settings.company_name} representative.
+                </p>
+            </div>
+
+            <div class="footer">
+                <p><strong>{settings.company_name}</strong></p>
+                <p>Email: <a href="mailto:{settings.from_email}">{settings.from_email}</a></p>
+                <p style="margin-top: 15px; font-size: 12px; color: #a0aec0;">
+                    This is an automated email. Please do not reply directly to this message.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        params = {
+            "from": settings.from_email,
+            "to": [manager_email],
+            "subject": f"Timesheet Approval Required - {contractor_name} ({timesheet_month})",
+            "html": html_content,
+        }
+
+        # Add attachment if provided
+        if pdf_content:
+            import base64
+            import mimetypes
+
+            # Determine filename and content type
+            if filename:
+                attachment_filename = filename
+                content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            else:
+                attachment_filename = f"Timesheet_{contractor_name.replace(' ', '_')}_{timesheet_month.replace(' ', '_')}.pdf"
+                content_type = "application/pdf"
+
+            params["attachments"] = [
+                {
+                    "filename": attachment_filename,
+                    "content": base64.b64encode(pdf_content).decode('utf-8'),
+                    "type": content_type
+                }
+            ]
+
+        email = resend.Emails.send(params)
+        print(f"Timesheet email sent to manager {manager_email}: {email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send timesheet email to manager: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def send_uploaded_timesheet_to_manager(
+    manager_email: str,
+    manager_name: str,
+    contractor_name: str,
+    timesheet_month: str,
+    review_link: str,
+    file_content: bytes,
+    filename: str
+) -> bool:
+    """
+    Send uploaded timesheet document to manager for approval
+    """
+    logo_url = settings.logo_url
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Timesheet Document Submitted</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+                padding: 20px 0;
+            }}
+            .email-wrapper {{
+                max-width: 560px;
+                margin: 0 auto;
+                background-color: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background-color: #ffffff;
+                padding: 30px;
+                text-align: center;
+                border-bottom: 2px solid #f0f0f0;
+            }}
+            .header img {{
+                max-width: 130px;
+                height: auto;
+                margin-bottom: 15px;
+            }}
+            .header h1 {{
+                color: #FF6B00;
+                font-size: 24px;
+                font-weight: 600;
+                margin: 0;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .greeting {{
+                font-size: 18px;
+                color: #1a1a1a;
+                margin-bottom: 20px;
+            }}
+            .message {{
+                font-size: 16px;
+                color: #4a5568;
+                margin-bottom: 20px;
+                line-height: 1.8;
+            }}
+            .info-box {{
+                background-color: #f7fafc;
+                border-left: 4px solid #FF6B00;
+                padding: 20px;
+                margin: 25px 0;
+                border-radius: 4px;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                font-size: 15px;
+                color: #2d3748;
+            }}
+            .info-box strong {{
+                color: #1a1a1a;
+                font-weight: 600;
+            }}
+            .action-notice {{
+                background-color: #fffbeb;
+                border: 1px solid #f59e0b;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+            }}
+            .action-notice p {{
+                font-size: 14px;
+                color: #92400e;
+                margin: 0;
+            }}
+            .button-container {{
+                text-align: center;
+                margin: 30px 0;
+            }}
+            .button {{
+                display: inline-block;
+                background-color: #FF6B00;
+                color: #ffffff !important;
+                padding: 14px 32px;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+            }}
+            .divider {{
+                height: 1px;
+                background-color: #e2e8f0;
+                margin: 30px 0;
+            }}
+            .footer {{
+                background-color: #f7fafc;
+                padding: 25px 30px;
+                text-align: center;
+                font-size: 13px;
+                color: #718096;
+            }}
+            .footer a {{
+                color: #FF6B00;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <img src="{logo_url}" alt="{settings.company_name}" />
+                <h1>Timesheet Document Submitted</h1>
+            </div>
+
+            <div class="content">
+                <p class="greeting">
+                    Hello {manager_name},
+                </p>
+
+                <p class="message">
+                    A timesheet document has been submitted for your review and approval.
+                </p>
+
+                <div class="info-box">
+                    <p><strong>Contractor:</strong> {contractor_name}</p>
+                    <p><strong>Period:</strong> {timesheet_month}</p>
+                    <p><strong>Document:</strong> {filename}</p>
+                    <p><strong>Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Your Approval</span></p>
+                </div>
+
+                <div class="action-notice">
+                    <p><strong>Action Required:</strong> Please review the attached timesheet document and approve or decline it using the button below.</p>
+                </div>
+
+                <div class="button-container">
+                    <a href="{review_link}" class="button">
+                        Review & Approve Timesheet
+                    </a>
+                </div>
+
+                <div class="divider"></div>
+
+                <p class="message" style="font-size: 14px; color: #718096;">
+                    The timesheet document is attached to this email for your convenience. If you have any questions, please contact the contractor directly or reach out to your {settings.company_name} representative.
+                </p>
+            </div>
+
+            <div class="footer">
+                <p><strong>{settings.company_name}</strong></p>
+                <p>Email: <a href="mailto:{settings.from_email}">{settings.from_email}</a></p>
+                <p style="margin-top: 15px; font-size: 12px; color: #a0aec0;">
+                    This is an automated email. Please do not reply directly to this message.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        import base64
+        import mimetypes
+
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+        params = {
+            "from": settings.from_email,
+            "to": [manager_email],
+            "subject": f"Timesheet Document Submitted - {contractor_name} ({timesheet_month})",
+            "html": html_content,
+            "attachments": [
+                {
+                    "filename": filename,
+                    "content": base64.b64encode(file_content).decode('utf-8'),
+                    "type": content_type
+                }
+            ]
+        }
+
+        email = resend.Emails.send(params)
+        print(f"Uploaded timesheet email sent to manager {manager_email}: {email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send uploaded timesheet email to manager: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False

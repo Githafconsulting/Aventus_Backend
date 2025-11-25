@@ -1,5 +1,5 @@
 # Contractors API routes
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
@@ -419,6 +419,7 @@ async def upload_documents(
     address_line2: Optional[str] = Form(None),
     address_line3: Optional[str] = Form(None),
     address_line4: Optional[str] = Form(None),
+    candidate_bank_name: Optional[str] = Form(None),
     candidate_bank_details: Optional[str] = Form(None),
     candidate_iban: Optional[str] = Form(None),
     # Document Files
@@ -475,6 +476,7 @@ async def upload_documents(
         contractor.address_line2 = address_line2
         contractor.address_line3 = address_line3
         contractor.address_line4 = address_line4
+        contractor.candidate_bank_name = candidate_bank_name
         contractor.candidate_bank_details = candidate_bank_details
         contractor.candidate_iban = candidate_iban
 
@@ -765,15 +767,13 @@ async def submit_cds_form(
 @router.put("/{contractor_id}/costing-sheet")
 async def submit_costing_sheet(
     contractor_id: str,
-    expenses: str = Form("[]"),
-    notes: str = Form(""),
-    total_amount: str = Form("0"),
-    costing_documents: List[UploadFile] = File(None),
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
 ):
     """
-    Step 3: Consultant submits costing sheet with expense details (optional)
+    Step 3: Consultant submits costing sheet with full costing details
+    Accepts JSON body with all costing data
     This changes status to PENDING_REVIEW and sends notification to admins
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
@@ -791,38 +791,20 @@ async def submit_costing_sheet(
             detail="CDS form must be completed before submitting costing sheet"
         )
 
-    # Parse expenses JSON
+    # Parse JSON body
     try:
-        expenses_data = json.loads(expenses)
-    except json.JSONDecodeError:
+        costing_data = await request.json()
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid expenses data format"
+            detail="Invalid JSON data"
         )
 
-    # Store costing sheet data
+    # Store complete costing sheet data with timestamp
     costing_sheet_data = {
-        "expenses": expenses_data,
-        "notes": notes,
-        "total_amount": total_amount,
+        **costing_data,
         "submitted_at": datetime.now().isoformat()
     }
-
-    # Handle file uploads for receipts (if provided)
-    # Note: Receipt files come as separate form fields named receipt_0, receipt_1, etc.
-    # For now, we'll store the expense data without file URLs
-    # You can extend this to upload to Supabase storage if needed
-
-    # Handle costing documents upload (if provided)
-    if costing_documents:
-        doc_urls = []
-        for doc in costing_documents:
-            if doc and doc.filename:
-                # TODO: Upload to Supabase storage
-                # For now, just store the filename
-                doc_urls.append(doc.filename)
-        if doc_urls:
-            costing_sheet_data["costing_documents"] = doc_urls
 
     contractor.costing_sheet_data = costing_sheet_data
 
