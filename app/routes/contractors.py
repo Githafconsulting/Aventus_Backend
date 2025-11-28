@@ -25,7 +25,10 @@ from app.schemas.contractor import (
     DocumentResponse,
     RouteSelection,
     ThirdPartyRequest,
-    QuoteSheetRequest
+    QuoteSheetRequest,
+    COHFData,
+    COHFSubmission,
+    COHFEmailData
 )
 from app.utils.auth import (
     get_current_active_user,
@@ -46,6 +49,7 @@ from app.utils.email import (
 from app.utils.contract_template import populate_contract_template
 from app.utils.contract_pdf_generator import generate_consultant_contract_pdf
 from app.utils.work_order_pdf_generator import generate_work_order_pdf
+from app.utils.cohf_pdf_generator import generate_cohf_pdf
 from app.utils.storage import upload_file
 from app.config import settings
 from fastapi.responses import StreamingResponse
@@ -1954,14 +1958,27 @@ async def get_contractor_documents(
             "uploaded_date": contractor.third_party_response_received_date
         })
 
-    # Add other documents
+    # Add other documents (including signed COHF)
     if contractor.other_documents:
         for idx, doc in enumerate(contractor.other_documents):
+            doc_type = doc.get("type", "other")
             documents.append({
                 "document_name": doc.get("name", f"Other Document {idx + 1}"),
-                "document_type": "other",
+                "document_type": doc_type,
                 "document_url": doc.get("data") or doc.get("url"),
-                "uploaded_date": contractor.documents_uploaded_date
+                "uploaded_date": doc.get("uploaded_at") or contractor.documents_uploaded_date
+            })
+
+    # Add signed COHF document if available and not already in other_documents
+    if contractor.cohf_signed_document:
+        # Check if COHF is not already in documents (to avoid duplicates)
+        cohf_already_added = any(doc.get("document_type") == "cohf_signed" for doc in documents)
+        if not cohf_already_added:
+            documents.append({
+                "document_name": f"COHF - Signed by {contractor.cohf_third_party_name or 'Third Party'}",
+                "document_type": "cohf_signed",
+                "document_url": contractor.cohf_signed_document,
+                "uploaded_date": contractor.cohf_completed_date
             })
 
     # Add signed contract if available
@@ -1990,7 +2007,11 @@ async def select_onboarding_route(
     """
     Select onboarding route for contractor after documents are uploaded
     Routes: wps, freelancer, uae, saudi, offshore
-    Sub-routes: direct, third_party (for uae and saudi)
+
+    Flow after route selection:
+    - SAUDI: Quote Sheet → CDS & CS → Review
+    - UAE: COHF first → CDS & CS → Review
+    - OFFSHORE, FREELANCER, WPS: CDS & CS → Review
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -2008,45 +2029,53 @@ async def select_onboarding_route(
             detail=f"Invalid route. Must be one of: {', '.join(valid_routes)}"
         )
 
-    # Validate sub-route
-    valid_sub_routes = ["direct", "third_party"]
-    if data.sub_route and data.sub_route not in valid_sub_routes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid sub-route. Must be one of: {', '.join(valid_sub_routes)}"
-        )
-
-    # Store route information
-    # For backward compatibility, map new routes to business_type
-    route_to_business_type = {
-        "wps": "WPS",
-        "freelancer": "Freelancer",
-        "uae": "3RD Party" if data.sub_route == "third_party" else "Freelancer",
-        "saudi": "3RD Party" if data.sub_route == "third_party" else "Freelancer",
-        "offshore": "Freelancer"
+    # Map route to OnboardingRoute enum
+    route_mapping = {
+        "wps": OnboardingRoute.WPS,
+        "freelancer": OnboardingRoute.FREELANCER,
+        "uae": OnboardingRoute.UAE,
+        "saudi": OnboardingRoute.SAUDI,
+        "offshore": OnboardingRoute.OFFSHORE
     }
 
-    contractor.business_type = route_to_business_type.get(data.route, "Freelancer")
+    contractor.onboarding_route = route_mapping.get(data.route)
 
-    # Set onboarding route
-    if data.sub_route == "third_party":
-        contractor.onboarding_route = OnboardingRoute.THIRD_PARTY
-        contractor.status = ContractorStatus.PENDING_THIRD_PARTY_RESPONSE
+    # Store business type for reference
+    route_to_business_type = {
+        "wps": "wps",
+        "freelancer": "freelancer",
+        "uae": "3rd_party_uae",
+        "saudi": "3rd_party_saudi",
+        "offshore": "offshore"
+    }
+    contractor.business_type = route_to_business_type.get(data.route, "freelancer")
+
+    # Set status based on route-specific flow
+    next_step = ""
+    if data.route == "saudi":
+        # Saudi route: Goes to Quote Sheet first
+        contractor.status = ContractorStatus.PENDING_THIRD_PARTY_QUOTE
+        next_step = "quote_sheet"
+    elif data.route == "uae":
+        # UAE route: Goes to COHF first
+        contractor.status = ContractorStatus.PENDING_COHF
+        contractor.cohf_status = "draft"
+        next_step = "cohf"
     else:
-        # Direct route (WPS, Freelancer, UAE-Direct, Offshore)
-        contractor.onboarding_route = OnboardingRoute.WPS_FREELANCER
-        # Status stays as DOCUMENTS_UPLOADED until CDS & CS forms are completed
+        # WPS, Freelancer, Offshore: Go directly to CDS & CS
+        contractor.status = ContractorStatus.PENDING_CDS_CS
+        next_step = "cds_form"
 
     db.commit()
     db.refresh(contractor)
 
     return {
-        "message": f"Onboarding route set to {data.route} ({data.sub_route})",
+        "message": f"Onboarding route set to {data.route}",
         "contractor_id": contractor.id,
         "route": data.route,
-        "sub_route": data.sub_route,
         "business_type": contractor.business_type,
-        "status": contractor.status
+        "status": contractor.status.value,
+        "next_step": next_step
     }
 
 
@@ -2078,6 +2107,78 @@ async def clear_onboarding_route(
     return {
         "message": "Onboarding route cleared successfully",
         "contractor_id": contractor.id
+    }
+
+
+@router.post("/{contractor_id}/reset-for-testing")
+async def reset_contractor_for_testing(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Reset contractor to documents_uploaded status for testing onboarding routes.
+    Clears all route-specific data (COHF, quote sheets, CDS, etc.)
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Reset to documents_uploaded status
+    contractor.status = ContractorStatus.DOCUMENTS_UPLOADED
+
+    # Clear route selection
+    contractor.onboarding_route = None
+    contractor.business_type = None
+    contractor.sub_route = None
+    contractor.third_party_id = None
+
+    # Clear COHF data (UAE route)
+    contractor.cohf_data = None
+    contractor.cohf_status = None
+    contractor.cohf_submitted_date = None
+    contractor.cohf_sent_to_3rd_party_date = None
+    contractor.cohf_docusign_received_date = None
+
+    # Clear quote sheet data (Saudi route)
+    contractor.third_party_quote_sheet_url = None
+    contractor.third_party_quote_requested_date = None
+    contractor.third_party_quote_received_date = None
+
+    # Clear CDS/CS data
+    contractor.cds_form_data = None
+    contractor.cds_submitted_date = None
+
+    # Clear work order
+    contractor.work_order_sent_date = None
+    contractor.work_order_url = None
+
+    # Clear contract data
+    contractor.contract_token = None
+    contractor.contract_sent_date = None
+    contractor.signed_date = None
+    contractor.signed_contract_url = None
+    contractor.signature_data = None
+    contractor.third_party_contract_url = None
+    contractor.third_party_contract_uploaded_date = None
+
+    # Clear approval data
+    contractor.approved_date = None
+    contractor.rejected_date = None
+    contractor.rejection_reason = None
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Contractor reset to documents_uploaded status for testing",
+        "contractor_id": contractor.id,
+        "status": contractor.status,
+        "route_cleared": True
     }
 
 
@@ -2199,11 +2300,11 @@ async def send_third_party_request(
             detail="Contractor not found"
         )
 
-    # Verify contractor has third party route selected
-    if contractor.onboarding_route != OnboardingRoute.THIRD_PARTY:
+    # Verify contractor has a third party route selected (UAE or SAUDI)
+    if contractor.onboarding_route not in [OnboardingRoute.UAE, OnboardingRoute.SAUDI]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contractor must have third party route selected"
+            detail="Contractor must have UAE or SAUDI third party route selected"
         )
 
     # Get third party company details
@@ -2872,5 +2973,707 @@ async def activate_contractor_account(
         "status": "active",
         "credentials_sent": True,
         "login_url": f"{settings.frontend_url}/login"
+    }
+
+
+# ============================================
+# COHF (Cost of Hire Form) Endpoints - UAE Route
+# ============================================
+
+@router.get("/{contractor_id}/cohf/pdf")
+async def get_cohf_pdf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Generate and download COHF PDF for a contractor (UAE route)
+    Returns a 2-page A4 PDF document
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Prepare contractor data from model fields
+    contractor_data = {
+        "id": str(contractor.id),
+        "first_name": contractor.first_name,
+        "surname": contractor.surname,
+        "email": contractor.email,
+        "phone": contractor.phone,
+        "nationality": contractor.nationality,
+        "dob": contractor.dob,
+        "current_location": contractor.current_location,
+        "client_name": contractor.client_name,
+        "role": contractor.role,
+        "location": contractor.location,
+        "start_date": contractor.start_date,
+        "end_date": contractor.end_date,
+        "duration": contractor.duration,
+    }
+
+    # Parse COHF data if exists
+    cohf_data = {}
+    if contractor.cohf_data:
+        if isinstance(contractor.cohf_data, str):
+            try:
+                cohf_data = json.loads(contractor.cohf_data)
+            except:
+                cohf_data = {}
+        elif isinstance(contractor.cohf_data, dict):
+            cohf_data = contractor.cohf_data
+
+    # Generate PDF
+    pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
+
+    # Create filename
+    contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+    filename = f"COHF_{contractor_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename={filename}",
+            "Content-Type": "application/pdf"
+        }
+    )
+
+
+@router.get("/{contractor_id}/cohf")
+async def get_cohf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Get COHF data for a contractor (UAE route)
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    return {
+        "contractor_id": contractor_id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "cohf_data": contractor.cohf_data,
+        "cohf_status": contractor.cohf_status,
+        "cohf_submitted_date": contractor.cohf_submitted_date,
+        "cohf_sent_to_3rd_party_date": contractor.cohf_sent_to_3rd_party_date,
+        "cohf_docusign_received_date": contractor.cohf_docusign_received_date,
+        "cohf_completed_date": contractor.cohf_completed_date,
+        "onboarding_route": contractor.onboarding_route.value if contractor.onboarding_route else None,
+        "status": contractor.status.value
+    }
+
+
+@router.put("/{contractor_id}/cohf")
+async def update_cohf(
+    contractor_id: str,
+    data: COHFSubmission,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Update COHF data for a contractor (UAE route)
+    Actions: save, send_to_3rd_party, mark_docusign_received, complete
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Verify this is UAE route
+    if contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="COHF is only applicable for UAE route"
+        )
+
+    # Save COHF data (accept dict directly)
+    if data.cohf_data:
+        contractor.cohf_data = data.cohf_data
+
+    # Handle action
+    if data.action == "save":
+        contractor.cohf_status = "draft"
+        contractor.cohf_submitted_date = datetime.now(timezone.utc)
+        message = "COHF saved as draft"
+
+    elif data.action == "send_to_3rd_party":
+        contractor.cohf_status = "sent_to_3rd_party"
+        contractor.cohf_sent_to_3rd_party_date = datetime.now(timezone.utc)
+        message = "COHF marked as sent to 3rd party"
+
+    elif data.action == "mark_signed":
+        contractor.cohf_status = "signed"
+        contractor.cohf_docusign_received_date = datetime.now(timezone.utc)
+        message = "COHF marked as signed"
+
+    elif data.action == "complete":
+        contractor.cohf_status = "completed"
+        contractor.cohf_completed_date = datetime.now(timezone.utc)
+        contractor.status = ContractorStatus.COHF_COMPLETED
+        message = "COHF completed"
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid action. Must be one of: save, send_to_3rd_party, mark_signed, complete"
+        )
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": message,
+        "contractor_id": contractor.id,
+        "cohf_status": contractor.cohf_status,
+        "status": contractor.status.value,
+        "next_step": "cds_form" if data.action == "complete" else None
+    }
+
+
+@router.post("/{contractor_id}/cohf/send-email")
+async def send_cohf_email_endpoint(
+    contractor_id: str,
+    data: COHFEmailData,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Send COHF to UAE 3rd party via email
+    Generates a token for 3rd party to access and sign the COHF
+    Accepts cohf_data directly - no need to save first
+    """
+    from app.utils.email import send_cohf_email
+
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # If cohf_data is provided in the request, use it directly (no save needed)
+    # Otherwise, use the saved cohf_data from the contractor
+    cohf_data_to_use = data.cohf_data if data.cohf_data else contractor.cohf_data
+
+    if not cohf_data_to_use:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="COHF data must be provided or saved before sending"
+        )
+
+    # Store the cohf_data on the contractor for 3rd party to view
+    contractor.cohf_data = cohf_data_to_use
+
+    # Generate unique token for 3rd party access
+    cohf_token = str(uuid.uuid4())
+    token_expiry = datetime.now(timezone.utc) + timedelta(days=7)  # 7 day expiry
+
+    # Update contractor with token and status
+    contractor.cohf_token = cohf_token
+    contractor.cohf_token_expiry = token_expiry
+    contractor.cohf_status = "sent_to_3rd_party"
+    contractor.cohf_sent_to_3rd_party_date = datetime.now(timezone.utc)
+    contractor.status = ContractorStatus.AWAITING_COHF_SIGNATURE
+
+    db.commit()
+    db.refresh(contractor)
+
+    # Send email to 3rd party
+    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    third_party_company = data.third_party_company or "Third Party"
+
+    email_sent = send_cohf_email(
+        third_party_email=data.third_party_email,
+        third_party_company=third_party_company,
+        contractor_name=contractor_name,
+        cohf_token=cohf_token,
+        expiry_date=token_expiry
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send COHF email"
+        )
+
+    return {
+        "message": f"COHF email sent to {data.third_party_email}",
+        "contractor_id": contractor.id,
+        "cohf_status": contractor.cohf_status,
+        "status": contractor.status.value,
+        "email_sent_to": data.third_party_email,
+        "token_expiry": token_expiry.isoformat()
+    }
+
+
+@router.post("/{contractor_id}/cohf/recall")
+async def recall_cohf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Recall COHF that was sent to 3rd party.
+    Invalidates the token and allows editing/resending.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if contractor.status != ContractorStatus.AWAITING_COHF_SIGNATURE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="COHF can only be recalled when awaiting signature"
+        )
+
+    # Invalidate the token and reset status
+    contractor.cohf_token = None
+    contractor.cohf_token_expiry = None
+    contractor.cohf_status = "draft"
+    contractor.status = ContractorStatus.PENDING_COHF
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "COHF recalled successfully. You can now edit and resend.",
+        "contractor_id": contractor.id,
+        "cohf_status": contractor.cohf_status,
+        "status": contractor.status.value
+    }
+
+
+# ============================================
+# Public COHF Endpoints (3rd Party Access)
+# ============================================
+
+@router.get("/public/cohf/{cohf_token}")
+async def get_cohf_by_token(
+    cohf_token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint for 3rd party to view COHF form.
+    No authentication required - uses token from email.
+    """
+    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired COHF link"
+        )
+
+    # Check if token has expired
+    if contractor.cohf_token_expiry and contractor.cohf_token_expiry < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This COHF link has expired. Please contact Aventus for a new link."
+        )
+
+    # Check if already signed
+    if contractor.cohf_status == "signed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This COHF has already been signed."
+        )
+
+    # Return COHF data and contractor info
+    return {
+        "contractor_id": contractor.id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "cohf_data": contractor.cohf_data,
+        "cohf_status": contractor.cohf_status,
+        "already_signed": contractor.cohf_status == "signed"
+    }
+
+
+@router.get("/public/cohf/{cohf_token}/pdf")
+async def get_cohf_pdf_by_token(
+    cohf_token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint for 3rd party to view COHF PDF.
+    No authentication required - uses token from email.
+    """
+    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired COHF link"
+        )
+
+    # Check if token has expired
+    if contractor.cohf_token_expiry and contractor.cohf_token_expiry < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This COHF link has expired."
+        )
+
+    # Prepare contractor data
+    contractor_data = {
+        "id": str(contractor.id),
+        "first_name": contractor.first_name,
+        "surname": contractor.surname,
+        "email": contractor.email,
+        "phone": contractor.phone,
+        "nationality": contractor.nationality,
+        "dob": contractor.dob,
+        "current_location": contractor.current_location,
+        "client_name": contractor.client_name,
+        "role": contractor.role,
+        "location": contractor.location,
+        "start_date": contractor.start_date,
+        "end_date": contractor.end_date,
+        "duration": contractor.duration,
+    }
+
+    # Parse COHF data
+    cohf_data = {}
+    if contractor.cohf_data:
+        if isinstance(contractor.cohf_data, str):
+            try:
+                cohf_data = json.loads(contractor.cohf_data)
+            except:
+                cohf_data = {}
+        elif isinstance(contractor.cohf_data, dict):
+            cohf_data = contractor.cohf_data
+
+    # Generate PDF
+    pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
+
+    contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+    filename = f"COHF_{contractor_name}.pdf"
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename={filename}",
+            "Content-Type": "application/pdf"
+        }
+    )
+
+
+@router.post("/public/cohf/{cohf_token}/sign")
+async def sign_cohf(
+    cohf_token: str,
+    signature_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Public endpoint for 3rd party to sign COHF.
+    No authentication required - uses token from email.
+
+    Expected signature_data:
+    {
+        "signer_name": "John Doe",
+        "signature_type": "drawn" or "typed",
+        "signature": "base64 data or typed name",
+        "cohf_data": { ... any updated form data ... }
+    }
+    """
+    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired COHF link"
+        )
+
+    # Check if token has expired
+    if contractor.cohf_token_expiry and contractor.cohf_token_expiry < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This COHF link has expired. Please contact Aventus for a new link."
+        )
+
+    # Check if already signed
+    if contractor.cohf_status == "signed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This COHF has already been signed."
+        )
+
+    # Extract signature info
+    signer_name = signature_data.get("signer_name", "")
+    signature_type = signature_data.get("signature_type", "typed")
+    signature = signature_data.get("signature", "")
+    updated_cohf_data = signature_data.get("cohf_data")
+
+    if not signer_name or not signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Signer name and signature are required"
+        )
+
+    # Update COHF data if provided
+    if updated_cohf_data:
+        contractor.cohf_data = updated_cohf_data
+
+    # Save signature
+    contractor.cohf_third_party_name = signer_name
+    contractor.cohf_third_party_signature = signature
+    contractor.cohf_status = "signed"
+    contractor.cohf_completed_date = datetime.now(timezone.utc)
+
+    # Update contractor status to COHF_COMPLETED
+    contractor.status = ContractorStatus.COHF_COMPLETED
+
+    # Generate signed PDF and upload to storage
+    try:
+        contractor_data = {
+            "id": str(contractor.id),
+            "first_name": contractor.first_name,
+            "surname": contractor.surname,
+            "email": contractor.email,
+            "phone": contractor.phone,
+            "nationality": contractor.nationality,
+            "dob": contractor.dob,
+            "current_location": contractor.current_location,
+            "client_name": contractor.client_name,
+            "role": contractor.role,
+            "location": contractor.location,
+            "start_date": contractor.start_date,
+            "end_date": contractor.end_date,
+            "duration": contractor.duration,
+        }
+
+        cohf_data = contractor.cohf_data if isinstance(contractor.cohf_data, dict) else {}
+
+        # Add signature info to cohf_data for PDF generation
+        cohf_data["third_party_signer_name"] = signer_name
+        cohf_data["third_party_signature"] = signature
+        cohf_data["third_party_signature_type"] = signature_type
+        cohf_data["signature_date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        # Generate PDF
+        pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
+
+        # Upload to storage
+        contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+        filename = f"COHF_Signed_{contractor_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        # Upload to Supabase storage (upload_file is sync, not async)
+        pdf_url = upload_file(
+            pdf_buffer,
+            filename,
+            f"cohf/{contractor.id}"
+        )
+
+        contractor.cohf_signed_document = pdf_url
+
+        # Add to other_documents array so it appears in document list
+        other_docs = contractor.other_documents or []
+        other_docs.append({
+            "name": f"COHF - Signed by {signer_name}",
+            "url": pdf_url,
+            "type": "cohf_signed",
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "signed_by": signer_name
+        })
+        contractor.other_documents = other_docs
+
+    except Exception as e:
+        print(f"Error generating/uploading signed COHF PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        # Continue anyway - the signature is saved
+
+    # Clear the token (one-time use)
+    contractor.cohf_token = None
+    contractor.cohf_token_expiry = None
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "COHF signed successfully",
+        "contractor_id": contractor.id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "cohf_status": contractor.cohf_status,
+        "status": contractor.status.value
+    }
+
+
+# ============================================
+# UAE 3rd Party Contract Upload Endpoints
+# ============================================
+
+@router.post("/{contractor_id}/upload-3rd-party-contract")
+async def upload_third_party_contract(
+    contractor_id: str,
+    contract_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Upload contract received from UAE 3rd party.
+    For UAE route, the 3rd party sends their contract to Aventus (instead of Aventus sending contract to contractor).
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Verify this is UAE route
+    if contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="3rd party contract upload is only applicable for UAE route"
+        )
+
+    # Verify contractor is in correct status (after work order completed)
+    valid_statuses = [
+        ContractorStatus.WORK_ORDER_COMPLETED,
+        ContractorStatus.PENDING_3RD_PARTY_CONTRACT
+    ]
+    if contractor.status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Contractor must be in status: {', '.join([s.value for s in valid_statuses])}"
+        )
+
+    # Validate file type
+    allowed_types = ["application/pdf", "image/jpeg", "image/png"]
+    if contract_file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF, JPEG, and PNG files are allowed"
+        )
+
+    # Upload file to storage
+    try:
+        file_content = await contract_file.read()
+        file_url = await upload_file(
+            file_content=file_content,
+            filename=contract_file.filename,
+            content_type=contract_file.content_type,
+            folder=f"contractors/{contractor_id}/3rd-party-contract"
+        )
+
+        # Update contractor record
+        contractor.third_party_contract_url = file_url
+        contractor.third_party_contract_uploaded_date = datetime.now(timezone.utc)
+        contractor.status = ContractorStatus.CONTRACT_UPLOADED
+
+        db.commit()
+        db.refresh(contractor)
+
+        return {
+            "message": "3rd party contract uploaded successfully",
+            "contractor_id": contractor.id,
+            "contract_url": file_url,
+            "uploaded_date": contractor.third_party_contract_uploaded_date,
+            "status": contractor.status.value,
+            "next_step": "activate"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload contract: {str(e)}"
+        )
+
+
+@router.get("/{contractor_id}/3rd-party-contract")
+async def get_third_party_contract(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Get the 3rd party contract URL for UAE route
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if not contractor.third_party_contract_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No 3rd party contract uploaded yet"
+        )
+
+    return {
+        "contractor_id": contractor.id,
+        "contract_url": contractor.third_party_contract_url,
+        "uploaded_date": contractor.third_party_contract_uploaded_date
+    }
+
+
+@router.post("/{contractor_id}/approve-3rd-party-contract")
+async def approve_third_party_contract(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """
+    Approve the 3rd party contract for UAE route.
+    After approval, contractor can be activated.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if contractor.status != ContractorStatus.CONTRACT_UPLOADED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contract must be uploaded before approval"
+        )
+
+    if not contractor.third_party_contract_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No 3rd party contract uploaded"
+        )
+
+    # Approve contract - for UAE route, skip to SIGNED status
+    contractor.status = ContractorStatus.SIGNED
+    contractor.contract_approved_date = datetime.now(timezone.utc)
+    contractor.contract_approved_by = current_user.id
+    contractor.signed_date = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "3rd party contract approved. Contractor ready for activation.",
+        "contractor_id": contractor.id,
+        "status": contractor.status.value,
+        "next_step": "activate"
     }
 

@@ -2676,3 +2676,219 @@ def send_uploaded_timesheet_to_manager(
         import traceback
         traceback.print_exc()
         return False
+
+
+def send_cohf_email(
+    third_party_email: str,
+    third_party_company: str,
+    contractor_name: str,
+    cohf_token: str,
+    expiry_date: datetime
+) -> bool:
+    """
+    Send COHF (Confirmation of Hire Form) to UAE 3rd party for review and signature
+    """
+    cohf_link = f"{settings.frontend_url}/cohf/sign/{cohf_token}"
+    expiry_str = expiry_date.strftime("%B %d, %Y at %I:%M %p")
+    logo_url = settings.logo_url
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>COHF - Confirmation of Hire Form</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                line-height: 1.6;
+                color: #1a1a1a;
+                background-color: #f5f5f5;
+                padding: 20px 0;
+            }}
+            .email-wrapper {{
+                max-width: 560px;
+                margin: 0 auto;
+                background-color: #ffffff;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }}
+            .header {{
+                background: linear-gradient(135deg, #00A99D 0%, #00C9B7 100%);
+                padding: 40px 30px;
+                text-align: center;
+            }}
+            .header img {{
+                max-width: 150px;
+                height: auto;
+                margin-bottom: 20px;
+            }}
+            .header h1 {{
+                color: #ffffff;
+                font-size: 24px;
+                font-weight: 700;
+                margin: 0;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .greeting {{
+                font-size: 18px;
+                color: #1a1a1a;
+                margin-bottom: 20px;
+            }}
+            .message {{
+                font-size: 16px;
+                color: #4a5568;
+                margin-bottom: 20px;
+                line-height: 1.8;
+            }}
+            .info-box {{
+                background-color: #f0fdf9;
+                border-left: 4px solid #00A99D;
+                padding: 20px;
+                margin: 25px 0;
+                border-radius: 4px;
+            }}
+            .info-box p {{
+                margin: 8px 0;
+                font-size: 15px;
+                color: #2d3748;
+            }}
+            .info-box strong {{
+                color: #1a1a1a;
+                font-weight: 600;
+            }}
+            .button-container {{
+                text-align: center;
+                margin: 35px 0;
+            }}
+            .button {{
+                display: inline-block;
+                padding: 16px 40px;
+                background: linear-gradient(135deg, #00A99D 0%, #00C9B7 100%);
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 16px;
+                box-shadow: 0 4px 15px rgba(0, 169, 157, 0.4);
+            }}
+            .steps {{
+                background-color: #f7fafc;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 25px 0;
+            }}
+            .steps h3 {{
+                font-size: 16px;
+                color: #1a1a1a;
+                margin-bottom: 15px;
+            }}
+            .steps ol {{
+                margin-left: 20px;
+                color: #4a5568;
+            }}
+            .steps li {{
+                margin: 10px 0;
+                font-size: 14px;
+            }}
+            .expiry-note {{
+                font-size: 13px;
+                color: #718096;
+                text-align: center;
+                margin-top: 20px;
+                padding: 12px;
+                background-color: #fff8f0;
+                border-radius: 6px;
+            }}
+            .footer {{
+                background-color: #f7fafc;
+                padding: 30px;
+                text-align: center;
+            }}
+            .footer p {{
+                font-size: 13px;
+                color: #718096;
+                margin: 5px 0;
+            }}
+            .footer a {{
+                color: #00A99D;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-wrapper">
+            <div class="header">
+                <img src="{logo_url}" alt="Aventus" style="max-width: 150px;">
+                <h1>Confirmation of Hire Form</h1>
+            </div>
+
+            <div class="content">
+                <p class="greeting">Dear {third_party_company},</p>
+
+                <p class="message">
+                    We have prepared a Confirmation of Hire Form (COHF) for the following contractor
+                    that requires your review and signature.
+                </p>
+
+                <div class="info-box">
+                    <p><strong>Contractor:</strong> {contractor_name}</p>
+                    <p><strong>Document:</strong> Confirmation of Hire Form (COHF)</p>
+                    <p><strong>Action Required:</strong> Review, complete any missing fields, and sign</p>
+                </div>
+
+                <div class="steps">
+                    <h3>What you need to do:</h3>
+                    <ol>
+                        <li>Click the button below to open the COHF</li>
+                        <li>Review the pre-filled information</li>
+                        <li>Complete any additional fields if required</li>
+                        <li>Sign the form electronically</li>
+                        <li>Submit the signed form</li>
+                    </ol>
+                </div>
+
+                <div class="button-container">
+                    <a href="{cohf_link}" class="button">Review & Sign COHF</a>
+                </div>
+
+                <p class="expiry-note">
+                    ⏰ This link will expire on <strong>{expiry_str}</strong>.
+                    Please complete the form before this date.
+                </p>
+            </div>
+
+            <div class="footer">
+                <p>If you have any questions, please contact us.</p>
+                <p>© {datetime.now().year} Aventus. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    try:
+        params = {
+            "from": settings.from_email,
+            "to": [third_party_email],
+            "subject": f"COHF Required: {contractor_name} - Confirmation of Hire Form",
+            "html": html_content,
+        }
+
+        email = resend.Emails.send(params)
+        print(f"COHF email sent to {third_party_email}: {email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send COHF email: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, EmailStr, field_validator
+from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
 
@@ -210,7 +210,7 @@ class ContractorResponse(BaseModel):
     emirates_id_document: Optional[str] = None
     degree_document: Optional[str] = None
     third_party_document: Optional[str] = None
-    other_documents: Optional[Dict[str, Any]] = None
+    other_documents: Optional[List[Dict[str, Any]]] = None  # List of additional documents
 
     # Costing sheet data for checking if CDS is completed
     costing_sheet_data: Optional[Dict[str, Any]] = None
@@ -242,6 +242,97 @@ class QuoteSheetRequest(BaseModel):
     email_cc: Optional[str] = None  # Optional CC email
     email_subject: str
     email_message: str
+
+
+class COHFData(BaseModel):
+    """Schema for COHF (Confirmation of Hire Form) - UAE Route - Auxilium Template"""
+    # Reference Section
+    reference_no: Optional[str] = None
+    requested_by: Optional[str] = None
+    from_company: Optional[str] = None  # Company sending the form
+
+    # Employee Candidate Information
+    title: Optional[str] = None  # Mr, Mrs, Ms, etc.
+    full_name: Optional[str] = None
+    nationality: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    marital_status: Optional[str] = None  # Married / Single
+    mobile: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None  # UAE Address or Home Country Address
+    current_location: Optional[str] = None  # Outside UAE / Inside UAE
+    visa_status: Optional[str] = None  # Existing Residence Visa / Tourist Visa / Spouse or Parent Sponsored
+
+    # Remuneration Information
+    gross_salary: Optional[str] = None
+    basic_salary: Optional[str] = None
+    general_allowance: Optional[str] = None
+    transport_allowance: Optional[str] = None
+    other_allowances: Optional[str] = None
+    family_status: Optional[str] = None  # Yes/No - what's included
+    medical_insurance: Optional[str] = None
+    flight_entitlement: Optional[str] = None
+
+    # Deployment Particulars
+    visa_type: Optional[str] = None  # 2YR Visa, Work Permit, Labour Card, Mission Visa
+    job_title: Optional[str] = None
+    company_name: Optional[str] = None  # Company candidate will work for
+    expected_start_date: Optional[str] = None
+    expected_tenure: Optional[str] = None
+
+    # Additional Notes
+    additional_notes: Optional[str] = None
+
+    # For backwards compatibility with old form fields
+    form_date: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry: Optional[str] = None
+    qualification: Optional[str] = None
+    uae_experience: Optional[str] = None
+    basic_salary_monthly: Optional[str] = None
+    basic_salary_annual: Optional[str] = None
+    housing_monthly: Optional[str] = None
+    housing_annual: Optional[str] = None
+    transport_monthly: Optional[str] = None
+    transport_annual: Optional[str] = None
+    other_monthly: Optional[str] = None
+    other_annual: Optional[str] = None
+    total_monthly: Optional[str] = None
+    total_annual: Optional[str] = None
+    medical: Optional[str] = None
+    annual_leave: Optional[str] = None
+    end_client: Optional[str] = None
+    work_location: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    duration: Optional[str] = None
+    notice: Optional[str] = None
+    probation: Optional[str] = None
+    visa_sponsor: Optional[str] = None
+
+    class Config:
+        extra = "allow"  # Allow extra fields
+
+
+class COHFSubmission(BaseModel):
+    """Schema for COHF submission"""
+    cohf_data: Optional[dict] = None  # Accept any dict structure
+    action: str = "save"  # "save", "send_to_3rd_party", "mark_signed", "complete"
+
+
+class COHFEmailData(BaseModel):
+    """Schema for sending COHF to 3rd party"""
+    third_party_email: str
+    third_party_company: Optional[str] = None
+    email_message: Optional[str] = None
+    cohf_data: Optional[Dict[str, Any]] = None  # Allow sending cohf_data directly with email
+
+
+class ThirdPartyContractUpload(BaseModel):
+    """Schema for 3rd party contract upload response"""
+    contractor_id: str
+    contract_url: str
+    uploaded_date: datetime
 
 
 class ContractorDetailResponse(BaseModel):
@@ -291,7 +382,7 @@ class ContractorDetailResponse(BaseModel):
     emirates_id_document: Optional[str] = None
     degree_document: Optional[str] = None
     third_party_document: Optional[str] = None
-    other_documents: Optional[Dict[str, Any]] = None
+    other_documents: Optional[List[Dict[str, Any]]] = None  # List of additional documents
 
     # Superadmin signature
     superadmin_signature_type: Optional[str] = None
@@ -329,6 +420,33 @@ class ContractorDetailResponse(BaseModel):
 
     # Costing sheet data
     costing_sheet_data: Optional[Dict[str, Any]] = None
+
+    # COHF (Cost of Hire Form) - UAE Route
+    cohf_data: Union[Dict[str, Any], None] = None
+    cohf_status: Optional[str] = None
+    cohf_submitted_date: Optional[datetime] = None
+    cohf_sent_to_3rd_party_date: Optional[datetime] = None
+    cohf_docusign_received_date: Optional[datetime] = None
+    cohf_completed_date: Optional[datetime] = None
+
+    # UAE 3rd Party Contract
+    third_party_contract_url: Optional[str] = None
+    third_party_contract_uploaded_date: Optional[datetime] = None
+
+    @field_validator('cohf_data', mode='before')
+    @classmethod
+    def validate_cohf_data(cls, v):
+        import json
+        # Handle NULL from database or empty dict
+        if v is None or v == 'null' or v == {}:
+            return None
+        # Handle JSON string from database
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
 
     # Management Company fields
     business_type: Optional[str] = None

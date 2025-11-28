@@ -10,6 +10,11 @@ class ContractorStatus(str, enum.Enum):
     DRAFT = "draft"
     PENDING_DOCUMENTS = "pending_documents"
     DOCUMENTS_UPLOADED = "documents_uploaded"
+    # Route-specific statuses
+    PENDING_COHF = "pending_cohf"  # UAE route: Waiting for COHF completion
+    AWAITING_COHF_SIGNATURE = "awaiting_cohf_signature"  # UAE route: COHF sent to 3rd party, awaiting signature
+    COHF_COMPLETED = "cohf_completed"  # UAE route: COHF done, ready for CDS
+    PENDING_THIRD_PARTY_QUOTE = "pending_third_party_quote"  # Saudi route: Waiting for 3rd party quote sheet
     PENDING_THIRD_PARTY_RESPONSE = "pending_third_party_response"
     PENDING_CDS_CS = "pending_cds_cs"
     CDS_CS_COMPLETED = "cds_cs_completed"
@@ -19,7 +24,9 @@ class ContractorStatus(str, enum.Enum):
     CANCELLED = "cancelled"
     PENDING_CLIENT_WO_SIGNATURE = "pending_client_wo_signature"
     WORK_ORDER_COMPLETED = "work_order_completed"
+    # Contract statuses
     PENDING_CONTRACT_UPLOAD = "pending_contract_upload"
+    PENDING_3RD_PARTY_CONTRACT = "pending_3rd_party_contract"  # UAE route: Waiting for 3rd party to send contract
     CONTRACT_UPLOADED = "contract_uploaded"
     CONTRACT_APPROVED = "contract_approved"
     PENDING_SIGNATURE = "pending_signature"
@@ -30,8 +37,12 @@ class ContractorStatus(str, enum.Enum):
 
 
 class OnboardingRoute(str, enum.Enum):
-    WPS_FREELANCER = "wps_freelancer"
-    THIRD_PARTY = "third_party"
+    """Onboarding route types - 5 distinct routes"""
+    WPS = "wps"
+    FREELANCER = "freelancer"
+    UAE = "uae"  # UAE 3rd Party
+    SAUDI = "saudi"  # Saudi 3rd Party
+    OFFSHORE = "offshore"
 
 
 class SignatureType(str, enum.Enum):
@@ -62,6 +73,25 @@ class Contractor(Base):
     third_party_email_sent_date = Column(DateTime(timezone=True), nullable=True)
     third_party_response_received_date = Column(DateTime(timezone=True), nullable=True)
     third_party_document = Column(String, nullable=True)  # Path to uploaded 3rd party document
+
+    # COHF (Cost of Hire Form) - UAE Route
+    cohf_data = Column(JSON, nullable=True)  # COHF form data
+    cohf_submitted_date = Column(DateTime(timezone=True), nullable=True)
+    cohf_sent_to_3rd_party_date = Column(DateTime(timezone=True), nullable=True)
+    cohf_docusign_received_date = Column(DateTime(timezone=True), nullable=True)
+    cohf_completed_date = Column(DateTime(timezone=True), nullable=True)
+    cohf_status = Column(String, nullable=True)  # draft, sent_to_3rd_party, signed, completed
+    cohf_token = Column(String, unique=True, nullable=True, index=True)  # Token for 3rd party to access COHF
+    cohf_token_expiry = Column(DateTime(timezone=True), nullable=True)
+    cohf_signed_document = Column(String, nullable=True)  # URL to signed COHF PDF
+    cohf_third_party_signature = Column(Text, nullable=True)  # Signature data from 3rd party
+    cohf_third_party_name = Column(String, nullable=True)  # Name of person who signed
+
+    # UAE 3rd Party Contract Upload
+    third_party_contract_url = Column(String, nullable=True)  # URL to contract uploaded by 3rd party
+    third_party_contract_uploaded_date = Column(DateTime(timezone=True), nullable=True)
+    third_party_contract_upload_token = Column(String, unique=True, nullable=True, index=True)
+    third_party_contract_token_expiry = Column(DateTime(timezone=True), nullable=True)
 
     # Document Upload Workflow
     document_upload_token = Column(String, unique=True, nullable=True, index=True)

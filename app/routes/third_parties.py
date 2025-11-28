@@ -41,16 +41,32 @@ async def create_third_party(
 @router.get("/", response_model=List[ThirdPartyResponse])
 async def get_third_parties(
     include_inactive: bool = False,
+    country: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
     """
     Get all third party companies
+    Optionally filter by country (e.g., UAE, Saudi Arabia)
+    Supports aliases: UAE = United Arab Emirates, Saudi = Saudi Arabia
     """
     query = db.query(ThirdParty)
 
     if not include_inactive:
         query = query.filter(ThirdParty.is_active == True)
+
+    if country:
+        # Handle country aliases
+        country_aliases = {
+            "UAE": ["UAE", "United Arab Emirates"],
+            "Saudi": ["Saudi", "Saudi Arabia"],
+        }
+
+        # Check if the provided country is an alias key
+        if country in country_aliases:
+            query = query.filter(ThirdParty.country.in_(country_aliases[country]))
+        else:
+            query = query.filter(ThirdParty.country == country)
 
     third_parties = query.order_by(ThirdParty.company_name).all()
     return third_parties
