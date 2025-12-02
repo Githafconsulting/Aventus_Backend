@@ -138,20 +138,31 @@ class Contractor(Base):
 
     # Personal Details
     first_name = Column(String, nullable=False)
+    middle_names = Column(String, nullable=True)  # NEW: All middle names
     surname = Column(String, nullable=False)
     gender = Column(String, nullable=False)  # "Male" or "Female"
     nationality = Column(String, nullable=False)
     country = Column(String, nullable=True)  # Current country
+    country_of_residence = Column(String, nullable=True)  # NEW: Country of residence
     current_location = Column(String, nullable=True)  # Current city/location
     marital_status = Column(String, nullable=True)  # "Single", "Married", "Divorced", "Widowed"
     number_of_children = Column(String, nullable=True)
-    home_address = Column(String, nullable=False)
+    # Address fields (renamed for clarity)
+    address_line1 = Column(String, nullable=True)  # NEW: Primary address line
+    home_address = Column(String, nullable=False)  # Legacy - keep for backward compatibility
     address_line2 = Column(String, nullable=True)
     address_line3 = Column(String, nullable=True)
     address_line4 = Column(String, nullable=True)
     phone = Column(String, nullable=False)
+    mobile_no = Column(String, nullable=True)  # NEW: Mobile number (alias)
     email = Column(String, unique=True, index=True, nullable=False)
     dob = Column(String, nullable=False)
+    # Contractor Banking Details (NEW)
+    contractor_bank_name = Column(String, nullable=True)
+    contractor_account_name = Column(String, nullable=True)
+    contractor_account_no = Column(String, nullable=True)
+    contractor_iban = Column(String, nullable=True)
+    contractor_swift_bic = Column(String, nullable=True)
 
     # Management Company
     business_type = Column(String, nullable=True)  # "3RD Party", "Freelancer", "Aventus"
@@ -162,9 +173,20 @@ class Contractor(Base):
     management_address_line3 = Column(String, nullable=True)
     company_vat_no = Column(String, nullable=True)
     company_name = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
     account_number = Column(String, nullable=True)
     iban_number = Column(String, nullable=True)
     company_reg_no = Column(String, nullable=True)
+    # NEW Management Company Fields
+    mgmt_address_line1 = Column(String, nullable=True)
+    mgmt_address_line2 = Column(String, nullable=True)
+    mgmt_address_line3 = Column(String, nullable=True)
+    mgmt_address_line4 = Column(String, nullable=True)
+    mgmt_bank_name = Column(String, nullable=True)
+    mgmt_account_name = Column(String, nullable=True)
+    mgmt_account_number = Column(String, nullable=True)
+    mgmt_iban_number = Column(String, nullable=True)
+    mgmt_swift_bic = Column(String, nullable=True)
 
     # Placement Details
     client_id = Column(String, nullable=True)  # ID of the client company
@@ -176,6 +198,15 @@ class Contractor(Base):
     location = Column(String, nullable=True)
     duration = Column(String, nullable=True)
     currency = Column(String, nullable=False, default="AED")
+    # Rate type: "monthly" or "day"
+    rate_type = Column(String, nullable=True, default="monthly")
+    # Monthly rate fields
+    charge_rate_month = Column(String, nullable=True)
+    gross_salary = Column(String, nullable=True)
+    # Day rate fields
+    charge_rate_day = Column(String, nullable=True)
+    day_rate = Column(String, nullable=True)
+    # Legacy fields (keep for backward compatibility)
     client_charge_rate = Column(String, nullable=True)
     candidate_pay_rate = Column(String, nullable=True)
     candidate_pay_rate_period = Column(String, nullable=True)  # "day" or "month"
@@ -227,8 +258,12 @@ class Contractor(Base):
     # Invoice Details
     timesheet_required = Column(String, nullable=True)
     timesheet_approver_name = Column(String, nullable=True)
-    invoice_email = Column(String, nullable=True)
-    client_contact = Column(String, nullable=True)
+    invoice_email = Column(String, nullable=True)  # Legacy
+    invoice_email1 = Column(String, nullable=True)  # NEW: Primary invoice email
+    invoice_email2 = Column(String, nullable=True)  # NEW: Secondary invoice email
+    client_contact = Column(String, nullable=True)  # Legacy
+    client_contact1 = Column(String, nullable=True)  # NEW: Primary client contact
+    client_contact2 = Column(String, nullable=True)  # NEW: Secondary client contact
     invoice_address_line1 = Column(String, nullable=True)
     invoice_address_line2 = Column(String, nullable=True)
     invoice_address_line3 = Column(String, nullable=True)
@@ -236,6 +271,7 @@ class Contractor(Base):
     invoice_po_box = Column(String, nullable=True)
     invoice_country = Column(String, nullable=True)
     invoice_tax_number = Column(String, nullable=True)
+    tax_number = Column(String, nullable=True)  # NEW: Alias for tax number
     contractor_pay_frequency = Column(String, nullable=True)
     client_invoice_frequency = Column(String, nullable=True)
     client_payment_terms = Column(String, nullable=True)

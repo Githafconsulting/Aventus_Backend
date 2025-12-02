@@ -95,6 +95,7 @@ class CostingSheetData(BaseModel):
     registered_address: Optional[str] = None
     company_vat_no: Optional[str] = None
     company_name: Optional[str] = None
+    bank_name: Optional[str] = None
     account_number: Optional[str] = None
     iban_number: Optional[str] = None
     company_reg_no: Optional[str] = None
@@ -457,6 +458,7 @@ class ContractorDetailResponse(BaseModel):
     management_address_line3: Optional[str] = None
     company_vat_no: Optional[str] = None
     company_name: Optional[str] = None
+    bank_name: Optional[str] = None
     account_number: Optional[str] = None
     iban_number: Optional[str] = None
     company_reg_no: Optional[str] = None
