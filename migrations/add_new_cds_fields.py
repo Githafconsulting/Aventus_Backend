@@ -35,6 +35,7 @@ def run_migration():
         ("mgmt_address_line2", "VARCHAR"),
         ("mgmt_address_line3", "VARCHAR"),
         ("mgmt_address_line4", "VARCHAR"),
+        ("mgmt_country", "VARCHAR"),
         ("mgmt_bank_name", "VARCHAR"),
         ("mgmt_account_name", "VARCHAR"),
         ("mgmt_account_number", "VARCHAR"),

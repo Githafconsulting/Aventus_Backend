@@ -182,6 +182,7 @@ class Contractor(Base):
     mgmt_address_line2 = Column(String, nullable=True)
     mgmt_address_line3 = Column(String, nullable=True)
     mgmt_address_line4 = Column(String, nullable=True)
+    mgmt_country = Column(String, nullable=True)
     mgmt_bank_name = Column(String, nullable=True)
     mgmt_account_name = Column(String, nullable=True)
     mgmt_account_number = Column(String, nullable=True)

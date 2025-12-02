@@ -669,6 +669,8 @@ async def submit_cds_form(
         contractor.management_address_line3 = form_data['managementAddressLine3']
     if 'mgmtAddressLine4' in form_data:
         contractor.mgmt_address_line4 = form_data['mgmtAddressLine4']
+    if 'mgmtCountry' in form_data:
+        contractor.mgmt_country = form_data['mgmtCountry']
     if 'companyRegNo' in form_data:
         contractor.company_reg_no = form_data['companyRegNo']
     if 'companyVATNo' in form_data:
