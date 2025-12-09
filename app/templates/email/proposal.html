@@ -1,0 +1,40 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ recipient_name }}!</h2>
+
+<p class="intro-text">
+    A new proposal has been prepared for your review.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📋</div>
+    <div class="document-title">Proposal Ready for Review</div>
+    <p class="document-desc">{{ proposal_title | default('Employment Proposal') }}</p>
+</div>
+
+{% if contractor_name %}
+<div class="info-box">
+    <strong>Candidate</strong>
+    <p>{{ contractor_name }}</p>
+</div>
+{% endif %}
+
+<div class="cta-container">
+    <a href="{{ proposal_link }}" class="cta-button">View Proposal</a>
+</div>
+
+{% if expiry_date %}
+<div class="notice">
+    <strong>Time-Sensitive</strong>
+    <p>This link will expire on <strong>{{ expiry_date }}</strong>.</p>
+</div>
+{% endif %}
+
+<div class="divider"></div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

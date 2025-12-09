@@ -2,7 +2,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable, PageBreak
 from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
@@ -12,7 +12,15 @@ import base64
 
 def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     """
-    Generate a professional Confirmation of Hire Form (COHF) PDF with Auxilium branding
+    Generate a professional Confirmation of Hire Form (COHF) PDF - Version 2
+    Matching the new Auxilium COHF template with all sections:
+    - Reference
+    - Employee Candidate Information
+    - Remuneration Information
+    - Additional Payments (Commission/Bonus table with Client Declaration)
+    - Deployment Particulars
+    - Documents Required
+    - Signatures (4 signature blocks)
 
     Args:
         contractor_data: Dictionary containing contractor information
@@ -36,8 +44,13 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     elements = []
     styles = getSampleStyleSheet()
 
-    # Define Auxilium colors (teal from logo)
-    teal = colors.HexColor('#00A99D')
+    # Get primary color from cohf_data or use default teal
+    primary_color_hex = '#00A99D'
+    if cohf_data and cohf_data.get('primary_color'):
+        primary_color_hex = cohf_data.get('primary_color')
+
+    # Define colors
+    teal = colors.HexColor(primary_color_hex)
     dark_gray = colors.HexColor('#333333')
     light_gray = colors.HexColor('#F5F5F5')
     white = colors.white
@@ -51,10 +64,10 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     title_style = ParagraphStyle(
         'Title',
         parent=styles['Heading1'],
-        fontSize=18,
+        fontSize=16,
         textColor=teal,
-        spaceAfter=6*mm,
-        spaceBefore=4*mm,
+        spaceAfter=4*mm,
+        spaceBefore=3*mm,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
     )
@@ -73,48 +86,57 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     label_style = ParagraphStyle(
         'Label',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=8,
         textColor=dark_gray,
         fontName='Helvetica-Bold',
-        leading=12,
+        leading=11,
     )
 
     value_style = ParagraphStyle(
         'Value',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=8,
         textColor=dark_gray,
         fontName='Helvetica',
-        leading=12,
+        leading=11,
     )
 
     normal_style = ParagraphStyle(
         'NormalText',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=8,
         textColor=dark_gray,
         fontName='Helvetica',
-        leading=12,
+        leading=11,
     )
 
     italic_style = ParagraphStyle(
         'ItalicText',
         parent=styles['Normal'],
-        fontSize=8,
+        fontSize=7,
         textColor=colors.grey,
         fontName='Helvetica-Oblique',
-        leading=10,
-        spaceBefore=3*mm,
-        spaceAfter=3*mm,
+        leading=9,
+        spaceBefore=2*mm,
+        spaceAfter=2*mm,
     )
 
     small_style = ParagraphStyle(
         'Small',
         parent=styles['Normal'],
-        fontSize=8,
+        fontSize=7,
         textColor=colors.grey,
         alignment=TA_CENTER,
-        spaceBefore=4*mm,
+        spaceBefore=3*mm,
+    )
+
+    checkbox_style = ParagraphStyle(
+        'Checkbox',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=dark_gray,
+        fontName='Helvetica',
+        leading=11,
     )
 
     # Helper function to get value or empty string
@@ -129,53 +151,79 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
         )
         header_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), teal),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         return header_table
 
+    # Helper function for checkbox display
+    def checkbox(checked=False):
+        return "☑" if checked else "☐"
+
     # ============== PROFESSIONAL LETTERHEAD ==============
+    # Try to use custom logo from cohf_data, otherwise use default
+    logo_url = get_val('logo_url', '')
     logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'auxilium-logo.png')
 
     # Company name style
     company_name_style = ParagraphStyle(
         'CompanyName',
-        fontSize=11,
+        fontSize=10,
         textColor=dark_gray,
         fontName='Helvetica-Bold',
         alignment=TA_RIGHT,
-        leading=14,
+        leading=13,
     )
 
     address_style = ParagraphStyle(
         'Address',
-        fontSize=9,
+        fontSize=8,
         textColor=dark_gray,
         fontName='Helvetica',
         alignment=TA_RIGHT,
-        leading=12,
+        leading=11,
     )
 
     # Build letterhead
-    if os.path.exists(logo_path):
+    logo = None
+    if logo_url and logo_url.startswith('data:'):
+        # Custom logo from base64
         try:
-            logo = Image(logo_path, width=45*mm, height=18*mm)
+            base64_data = logo_url.split(',')[1]
+            logo_bytes = base64.b64decode(base64_data)
+            logo_buffer = BytesIO(logo_bytes)
+            logo = Image(logo_buffer, width=40*mm, height=16*mm)
+            logo.hAlign = 'LEFT'
+        except Exception as e:
+            print(f"Error loading custom logo: {e}")
+            logo = None
+
+    if logo is None and os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=40*mm, height=16*mm)
             logo.hAlign = 'LEFT'
         except:
-            logo = Paragraph("<font color='#00A99D' size='20'><b>auxilium</b></font>",
-                           ParagraphStyle('LogoText', fontSize=20, textColor=teal, fontName='Helvetica-Bold'))
-    else:
-        logo = Paragraph("<font color='#00A99D' size='20'><b>auxilium</b></font>",
-                        ParagraphStyle('LogoText', fontSize=20, textColor=teal, fontName='Helvetica-Bold'))
+            logo = Paragraph("<font color='#00A99D' size='18'><b>auxilium</b></font>",
+                           ParagraphStyle('LogoText', fontSize=18, textColor=teal, fontName='Helvetica-Bold'))
+    elif logo is None:
+        logo = Paragraph("<font color='#00A99D' size='18'><b>auxilium</b></font>",
+                        ParagraphStyle('LogoText', fontSize=18, textColor=teal, fontName='Helvetica-Bold'))
 
-    # Address block
+    # Address block - get from cohf_data or use defaults
+    to_company_name = get_val('to_company_name', 'Auxilium Management Group FZE')
+    to_company_address = get_val('to_company_address', 'PO Box 333625')
+    to_company_city = get_val('to_company_city', 'Dubai')
+    to_company_country = get_val('to_company_country', 'UAE')
+    to_company_website = get_val('to_company_website', 'www.auxilium.ae')
+
     address_block = Paragraph(
-        "<b>Auxilium Management Group FZE</b><br/>"
-        "PO Box 333625<br/>"
-        "Dubai, United Arab Emirates<br/>"
-        "www.auxilium.ae",
+        f"<b>{to_company_name}</b><br/>"
+        f"{to_company_address}<br/>"
+        f"{to_company_city}<br/>"
+        f"{to_company_country}<br/>"
+        f"<font color='{primary_color_hex}'>{to_company_website}</font>",
         address_style
     )
 
@@ -186,19 +234,20 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3*mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
     ]))
     elements.append(letterhead_table)
 
     # Teal divider line
-    elements.append(HRFlowable(width="100%", thickness=2, color=teal, spaceBefore=2*mm, spaceAfter=2*mm))
+    elements.append(HRFlowable(width="100%", thickness=2, color=teal, spaceBefore=1*mm, spaceAfter=1*mm))
 
     # ============== TITLE ==============
-    elements.append(Paragraph("Confirmation of Hire Form - UAE", title_style))
+    document_title = get_val('document_title', 'Confirmation of Hire Form - UAE')
+    elements.append(Paragraph(document_title, title_style))
 
     # ============== FROM/TO SECTION ==============
-    from_label_style = ParagraphStyle('FromLabel', fontSize=10, textColor=dark_gray, fontName='Helvetica-Bold')
-    from_value_style = ParagraphStyle('FromValue', fontSize=9, textColor=dark_gray, fontName='Helvetica', leading=12)
+    from_label_style = ParagraphStyle('FromLabel', fontSize=9, textColor=dark_gray, fontName='Helvetica-Bold')
+    from_value_style = ParagraphStyle('FromValue', fontSize=8, textColor=dark_gray, fontName='Helvetica', leading=11)
 
     from_to_data = [
         [
@@ -207,53 +256,54 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
         ],
         [
             Paragraph(get_val('from_company', '_______________________'), from_value_style),
-            Paragraph("Auxilium Management Group FZE<br/>PO Box 333625<br/>Dubai, UAE", from_value_style)
+            Paragraph(f"{to_company_name}<br/>{to_company_address}<br/>{to_company_city}<br/>{to_company_country}", from_value_style)
         ]
     ]
     from_to_table = Table(from_to_data, colWidths=[85*mm, 85*mm])
     from_to_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+        ('TOPPADDING', (0, 0), (-1, -1), 1*mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1*mm),
     ]))
     elements.append(from_to_table)
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 3*mm))
 
     # ============== REFERENCE SECTION ==============
-    elements.append(create_section_header("Reference"))
+    section_title = get_val('section_reference', 'Reference')
+    elements.append(create_section_header(section_title))
+
+    document_reference = get_val('document_reference', 'Service Agreement dated and associated General Terms (the "Agreement")')
 
     ref_data = [
         [Paragraph("<b>Document Reference:</b>", label_style),
-         Paragraph('Commercial Terms dated and associated General Terms (the "Agreement")', value_style)],
+         Paragraph(document_reference, value_style)],
         [Paragraph("<b>Confirmation of Hire No:</b>", label_style),
          Paragraph(get_val('reference_no', 'COHF-00'), value_style)],
         [Paragraph("<b>Requested by:</b>", label_style),
          Paragraph(get_val('requested_by', ''), value_style)],
     ]
-    ref_table = Table(ref_data, colWidths=[55*mm, 115*mm])
+    ref_table = Table(ref_data, colWidths=[50*mm, 120*mm])
     ref_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('BACKGROUND', (0, 0), (0, -1), light_gray),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(ref_table)
 
-    elements.append(Paragraph(
-        "Capitalised terms used in this form, but not defined in it shall have the meaning given to them in the Agreement.",
-        italic_style
-    ))
-    elements.append(Paragraph(
-        "Please fill the below form for the candidate in order to initiate your request:",
-        normal_style
-    ))
-    elements.append(Spacer(1, 3*mm))
+    reference_note = get_val('reference_note', 'Capitalised terms used in this form, but not defined in it shall have the meaning given to them in the Agreement.')
+    reference_instruction = get_val('reference_instruction', 'Please fill the below form for the candidate to initiate your request:')
+
+    elements.append(Paragraph(reference_note, italic_style))
+    elements.append(Paragraph(reference_instruction, normal_style))
+    elements.append(Spacer(1, 2*mm))
 
     # ============== EMPLOYEE CANDIDATE INFORMATION ==============
-    elements.append(create_section_header("Employee Candidate Information"))
+    section_title = get_val('section_employee_info', 'Employee Candidate Information')
+    elements.append(create_section_header(section_title))
 
     # Build full name
     full_name = get_val('full_name')
@@ -264,95 +314,220 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
 
     emp_data = [
         [Paragraph("<b>Title</b>", label_style), Paragraph(get_val('title', ''), value_style)],
-        [Paragraph("<b>Full Name (inc. Middle Names)</b>", label_style), Paragraph(full_name, value_style)],
+        [Paragraph("<b>Full Name - per passport</b>", label_style), Paragraph(full_name, value_style)],
         [Paragraph("<b>Nationality</b>", label_style), Paragraph(get_val('nationality', ''), value_style)],
         [Paragraph("<b>Date of Birth</b>", label_style), Paragraph(get_val('date_of_birth', get_val('dob', '')), value_style)],
-        [Paragraph("<b>Marital Status</b>", label_style), Paragraph(get_val('marital_status', 'Married / Single'), value_style)],
+        [Paragraph("<b>Marital Status</b>", label_style), Paragraph(get_val('marital_status', ''), value_style)],
         [Paragraph("<b>Mobile No.</b>", label_style), Paragraph(get_val('mobile', get_val('phone', '')), value_style)],
         [Paragraph("<b>Email Address</b>", label_style), Paragraph(get_val('email', ''), value_style)],
         [Paragraph("<b>UAE Address or Address in Home Country<br/>(if outside UAE)</b>", label_style),
          Paragraph(get_val('address', get_val('home_address', '')), value_style)],
         [Paragraph("<b>Current Location</b>", label_style),
-         Paragraph(get_val('current_location', '☐ Outside UAE       ☐ Inside UAE'), value_style)],
+         Paragraph(get_val('current_location', ''), value_style)],
         [Paragraph("<b>Current Visa Status</b>", label_style),
-         Paragraph(get_val('visa_status', '☐ Existing Residence Visa<br/>☐ Tourist Visa<br/>☐ Spouse or Parent Sponsored'), value_style)],
+         Paragraph(get_val('visa_status', ''), value_style)],
     ]
-    emp_table = Table(emp_data, colWidths=[55*mm, 115*mm])
+    emp_table = Table(emp_data, colWidths=[50*mm, 120*mm])
     emp_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('BACKGROUND', (0, 0), (0, -1), light_gray),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(emp_table)
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 3*mm))
 
     # ============== REMUNERATION INFORMATION ==============
-    elements.append(create_section_header("Remuneration Information"))
+    section_title = get_val('section_remuneration', 'Remuneration Information')
+    elements.append(create_section_header(section_title))
 
     rem_data = [
         [Paragraph("<b>Gross Salary</b>", label_style), Paragraph(get_val('gross_salary', ''), value_style)],
         [Paragraph("<b>Basic Salary</b>", label_style), Paragraph(get_val('basic_salary', get_val('basic_salary_monthly', '')), value_style)],
-        [Paragraph("<b>General Allowance</b>", label_style), Paragraph(get_val('general_allowance', ''), value_style)],
+        [Paragraph("<b>Housing Allowance</b>", label_style), Paragraph(get_val('housing_allowance', get_val('housing_monthly', '')), value_style)],
         [Paragraph("<b>Transport Allowance</b>", label_style), Paragraph(get_val('transport_allowance', get_val('transport_monthly', '')), value_style)],
-        [Paragraph("<b>Other Allowances</b>", label_style), Paragraph(get_val('other_allowances', get_val('other_monthly', '')), value_style)],
-        [Paragraph("<b>Family Status</b>", label_style),
-         Paragraph(get_val('family_status', "Yes / No – if yes please confirm what's included in the Family Status"), value_style)],
-        [Paragraph("<b>Medical Insurance</b>", label_style), Paragraph(get_val('medical_insurance', get_val('medical', '')), value_style)],
+        [Paragraph("<b>Leave Allowance</b>", label_style), Paragraph(get_val('leave_allowance', ''), value_style)],
+        [Paragraph("<b>Family Status</b>", label_style), Paragraph(get_val('family_status', ''), value_style)],
+        [Paragraph("<b>Medical Insurance Category</b>", label_style), Paragraph(get_val('medical_insurance_category', ''), value_style)],
         [Paragraph("<b>Flight Entitlement</b>", label_style), Paragraph(get_val('flight_entitlement', ''), value_style)],
+        [Paragraph("<b>Medical Insurance</b>", label_style), Paragraph(get_val('medical_insurance_cost', get_val('medical', '')), value_style)],
+        [Paragraph("<b>Visa / Labour Card</b>", label_style), Paragraph(get_val('visa_labour_card', ''), value_style)],
+        [Paragraph("<b>EOSB</b>", label_style), Paragraph(get_val('eosb', ''), value_style)],
+        [Paragraph("<b>Management Fee</b>", label_style), Paragraph(get_val('management_fee', ''), value_style)],
     ]
-    rem_table = Table(rem_data, colWidths=[55*mm, 115*mm])
+    rem_table = Table(rem_data, colWidths=[50*mm, 120*mm])
     rem_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('BACKGROUND', (0, 0), (0, -1), light_gray),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(rem_table)
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 3*mm))
+
+    # ============== ADDITIONAL PAYMENTS ==============
+    section_title = get_val('section_additional_payments', 'Additional Payments')
+    elements.append(create_section_header(section_title))
+
+    # Table header style
+    table_header_style = ParagraphStyle(
+        'TableHeader',
+        fontSize=8,
+        textColor=dark_gray,
+        fontName='Helvetica-Bold',
+        leading=10,
+    )
+
+    # Additional Payments table
+    add_pay_header = [
+        Paragraph("<b>Payment Type</b>", table_header_style),
+        Paragraph("<b>Criteria for Payment</b>", table_header_style),
+        Paragraph("<b>Cap</b>", table_header_style),
+        Paragraph("<b>Payment Frequency</b>", table_header_style),
+        Paragraph("<b>Notes</b>", table_header_style),
+    ]
+
+    add_pay_data = [
+        add_pay_header,
+        [
+            Paragraph("Commission", value_style),
+            Paragraph(get_val('commission_criteria', ''), value_style),
+            Paragraph(get_val('commission_cap', ''), value_style),
+            Paragraph(get_val('commission_frequency', ''), value_style),
+            Paragraph(get_val('commission_notes', ''), value_style),
+        ],
+        [
+            Paragraph("Bonus", value_style),
+            Paragraph(get_val('bonus_criteria', ''), value_style),
+            Paragraph(get_val('bonus_cap', ''), value_style),
+            Paragraph(get_val('bonus_frequency', ''), value_style),
+            Paragraph(get_val('bonus_notes', ''), value_style),
+        ],
+    ]
+
+    add_pay_table = Table(add_pay_data, colWidths=[28*mm, 45*mm, 25*mm, 32*mm, 40*mm])
+    add_pay_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('BACKGROUND', (0, 0), (-1, 0), light_gray),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(add_pay_table)
+    elements.append(Spacer(1, 2*mm))
+
+    # Client Declaration
+    declaration_style = ParagraphStyle(
+        'Declaration',
+        fontSize=7,
+        textColor=dark_gray,
+        fontName='Helvetica',
+        leading=10,
+    )
+
+    elements.append(Paragraph("<b>Client Declaration:</b>", label_style))
+
+    decl_1_checked = data.get('client_declaration_1_checked', False)
+    decl_2_checked = data.get('client_declaration_2_checked', False)
+    decl_1_text = get_val('client_declaration_1', 'I confirm that the above commission and/or bonus payments comply with UAE AML regulations and are not linked to any high-risk activities.')
+    decl_2_text = get_val('client_declaration_2', 'I acknowledge that if the payments are uncapped, additional due diligence may be required by the Service Provider.')
+
+    elements.append(Paragraph(f"{checkbox(decl_1_checked)} {decl_1_text}", declaration_style))
+    elements.append(Paragraph(f"{checkbox(decl_2_checked)} {decl_2_text}", declaration_style))
+    elements.append(Spacer(1, 3*mm))
 
     # ============== DEPLOYMENT PARTICULARS ==============
-    elements.append(create_section_header("Deployment Particulars"))
+    section_title = get_val('section_deployment', 'Deployment Particulars')
+    elements.append(create_section_header(section_title))
 
     dep_data = [
-        [Paragraph("<b>Visa Type</b>", label_style),
-         Paragraph(get_val('visa_type', '☐ 2YR Visa - ☐ Urgent<br/>☐ Work Permit (only)<br/>☐ Labour Card (only)<br/>☐ Mission Visa'), value_style)],
+        [Paragraph("<b>Visa Type</b>", label_style), Paragraph(get_val('visa_type', ''), value_style)],
         [Paragraph("<b>Job Title</b>", label_style), Paragraph(get_val('job_title', get_val('role', '')), value_style)],
         [Paragraph("<b>Company Name</b>", label_style),
-         Paragraph(get_val('company_name', get_val('client_name', 'Name of the company the candidate will be working for')), value_style)],
+         Paragraph(get_val('company_name', get_val('client_name', '')), value_style)],
+        [Paragraph("<b>Employee Work Location</b>", label_style), Paragraph(get_val('work_location', ''), value_style)],
         [Paragraph("<b>Expected Start Date</b>", label_style), Paragraph(get_val('expected_start_date', get_val('start_date', '')), value_style)],
         [Paragraph("<b>Expected Tenure</b>", label_style), Paragraph(get_val('expected_tenure', get_val('duration', '')), value_style)],
+        [Paragraph("<b>Probation Period (Months)</b>", label_style), Paragraph(get_val('probation_period', ''), value_style)],
+        [Paragraph("<b>Notice Period (Months)</b>", label_style), Paragraph(get_val('notice_period', ''), value_style)],
+        [Paragraph("<b>Annual Leave Type<br/>(Calendar/Working Days)</b>", label_style), Paragraph(get_val('annual_leave_type', ''), value_style)],
+        [Paragraph("<b>Annual Leave Days</b>", label_style), Paragraph(get_val('annual_leave_days', ''), value_style)],
+        [Paragraph("<b>Weekly Working Days</b>", label_style), Paragraph(get_val('weekly_working_days', ''), value_style)],
+        [Paragraph("<b>Weekend Days</b>", label_style), Paragraph(get_val('weekend_days', ''), value_style)],
+        [Paragraph("<b>Chargeable Rate</b>", label_style), Paragraph(get_val('chargeable_rate', ''), value_style)],
+        [Paragraph("<b>Additional Terms &amp; Conditions</b>", label_style), Paragraph(get_val('additional_terms', ''), value_style)],
     ]
-    dep_table = Table(dep_data, colWidths=[55*mm, 115*mm])
+    dep_table = Table(dep_data, colWidths=[50*mm, 120*mm])
     dep_table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
         ('BACKGROUND', (0, 0), (0, -1), light_gray),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(dep_table)
+    elements.append(Spacer(1, 3*mm))
+
+    # ============== DOCUMENTS REQUIRED ==============
+    section_title = get_val('section_documents_required', 'Documents Required')
+    elements.append(create_section_header(section_title))
+
+    doc_passport = checkbox(data.get('doc_passport_copy', False))
+    doc_visa = checkbox(data.get('doc_current_visa', False))
+    doc_photo = checkbox(data.get('doc_passport_photo', False))
+    doc_degree = checkbox(data.get('doc_attested_degree', False))
+    doc_cancellation = checkbox(data.get('doc_visa_cancellation', False))
+    doc_emirates_id = checkbox(data.get('doc_emirates_id', False))
+
+    docs_data = [
+        [
+            Paragraph(f"{doc_passport} Passport Copy (in colour)", checkbox_style),
+            Paragraph(f"{doc_visa} Current Visa Copy", checkbox_style),
+            Paragraph(f"{doc_photo} Passport Size Photograph", checkbox_style),
+        ],
+        [
+            Paragraph(f"{doc_degree} Attested University Degree", checkbox_style),
+            Paragraph(f"{doc_cancellation} Visa Cancellation (if any)", checkbox_style),
+            Paragraph(f"{doc_emirates_id} Emirates ID Copy (if any)", checkbox_style),
+        ],
+    ]
+    docs_table = Table(docs_data, colWidths=[56*mm, 56*mm, 58*mm])
+    docs_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(docs_table)
 
     # Disclaimer
-    elements.append(Paragraph(
-        "The Candidate is subject to government approvals and Auxilium will not be held responsible for any rejections by the relevant authorities.",
-        italic_style
-    ))
-    elements.append(Spacer(1, 6*mm))
-
-    # ============== SIGNATURES SECTION ==============
-    elements.append(create_section_header("Signatures & Company Stamp"))
+    disclaimer_text = get_val('disclaimer_text', 'Note: The Employment Visa application process for the Candidate is subject to government approvals and Auxilium will not be held responsible for any rejections by the relevant authorities.')
+    elements.append(Paragraph(disclaimer_text, italic_style))
     elements.append(Spacer(1, 4*mm))
 
-    sig_text_style = ParagraphStyle('SigText', fontSize=9, textColor=dark_gray, fontName='Helvetica', leading=12)
+    # ============== SIGNATURES SECTION (4 Signature Blocks) ==============
+    section_title = get_val('section_signatures', 'Signatures & Company Stamp')
+    elements.append(create_section_header(section_title))
+    elements.append(Spacer(1, 3*mm))
+
+    sig_text_style = ParagraphStyle('SigText', fontSize=8, textColor=dark_gray, fontName='Helvetica', leading=11)
+    sig_text_bold = ParagraphStyle('SigTextBold', fontSize=8, textColor=dark_gray, fontName='Helvetica-Bold', leading=11)
+
+    # Get signatory names from cohf_data
+    signatory_name = get_val('signatory_name', 'Lawrence Coward')
+    signatory_name_aventus = get_val('signatory_name_aventus', 'Richard White')
 
     # Check if third party has signed
     third_party_signer = get_val('third_party_signer_name', '')
@@ -360,91 +535,136 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     signature_date = get_val('signature_date', '')
     signature_type = get_val('third_party_signature_type', 'typed')
 
-    # Build the third party signature block
-    third_party_sig_elements = []
-
-    if third_party_signer and third_party_signature:
-        # If typed signature, display the name in a cursive-like style
-        if signature_type == 'typed':
-            third_party_sig_block = Paragraph(
-                f"<br/><br/><i><font size='14'>{third_party_signature}</font></i><br/>"
-                f"______________________________<br/>"
-                f"[Signed by: {third_party_signer}]<br/>"
-                f"<font size='7'>{signature_date}</font>",
-                sig_text_style
-            )
-        else:
-            # For drawn signatures, decode base64 and create image
-            try:
-                # The signature is base64 data URL like "data:image/png;base64,..."
-                if third_party_signature.startswith('data:'):
-                    # Extract the base64 part
-                    base64_data = third_party_signature.split(',')[1]
-                else:
-                    base64_data = third_party_signature
-
-                # Decode base64 to bytes
-                sig_bytes = base64.b64decode(base64_data)
-                sig_buffer = BytesIO(sig_bytes)
-
-                # Create image from the signature
-                sig_image = Image(sig_buffer, width=60*mm, height=20*mm)
-                sig_image.hAlign = 'LEFT'
-
-                # Create a mini table for the signature block with image
-                sig_block_data = [
-                    [sig_image],
-                    [Paragraph("______________________________", sig_text_style)],
-                    [Paragraph(f"[Signed by: {third_party_signer}]", sig_text_style)],
-                    [Paragraph(f"<font size='7'>{signature_date}</font>", sig_text_style)]
-                ]
-                third_party_sig_block = Table(sig_block_data, colWidths=[80*mm])
-                third_party_sig_block.setStyle(TableStyle([
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('TOPPADDING', (0, 0), (-1, -1), 1),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-                ]))
-            except Exception as e:
-                # Fallback if image fails
-                print(f"Error creating signature image: {e}")
-                third_party_sig_block = Paragraph(
-                    f"<br/><br/><i>[Digitally Signed]</i><br/>"
+    # Build third party signature block
+    def build_signature_block(sig_data=None, sig_name='', sig_date='', sig_type='typed'):
+        if sig_name and sig_data:
+            if sig_type == 'typed':
+                return Paragraph(
+                    f"<br/><i><font size='12'>{sig_data}</font></i><br/>"
                     f"______________________________<br/>"
-                    f"[Signed by: {third_party_signer}]<br/>"
-                    f"<font size='7'>{signature_date}</font>",
+                    f"[Signed by: {sig_name}]<br/>"
+                    f"<font size='6'>{sig_date}</font>",
                     sig_text_style
                 )
-    else:
-        third_party_sig_block = Paragraph(
-            "<br/><br/><br/>______________________________<br/>[Authorised Signatory]",
-            sig_text_style
-        )
+            else:
+                try:
+                    if sig_data.startswith('data:'):
+                        base64_data = sig_data.split(',')[1]
+                    else:
+                        base64_data = sig_data
+                    sig_bytes = base64.b64decode(base64_data)
+                    sig_buffer = BytesIO(sig_bytes)
+                    sig_image = Image(sig_buffer, width=50*mm, height=18*mm)
+                    sig_image.hAlign = 'LEFT'
 
-    sig_data = [
+                    sig_block_data = [
+                        [sig_image],
+                        [Paragraph("______________________________", sig_text_style)],
+                        [Paragraph(f"[Signed by: {sig_name}]", sig_text_style)],
+                        [Paragraph(f"<font size='6'>{sig_date}</font>", sig_text_style)]
+                    ]
+                    sig_block = Table(sig_block_data, colWidths=[75*mm])
+                    sig_block.setStyle(TableStyle([
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                        ('TOPPADDING', (0, 0), (-1, -1), 0),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                    ]))
+                    return sig_block
+                except Exception as e:
+                    print(f"Error creating signature image: {e}")
+                    return Paragraph(
+                        f"<br/><i>[Digitally Signed]</i><br/>"
+                        f"______________________________<br/>"
+                        f"[Signed by: {sig_name}]<br/>"
+                        f"<font size='6'>{sig_date}</font>",
+                        sig_text_style
+                    )
+        else:
+            return Paragraph(
+                "<br/><br/>______________________________<br/>[Authorised Signatory]",
+                sig_text_style
+            )
+
+    # 4 Signature blocks as per template v2: 2 for Auxilium, 2 for Aventus
+    sig_row_1 = [
+        # Auxilium Signatory 1
         [
-            Paragraph("Signed by Lawrence Coward duly authorised<br/>for and on behalf of<br/><b>Auxilium Management Group FZE</b>", sig_text_style),
-            Paragraph(f"Signed by duly authorised<br/>for and on behalf of<br/><b>{get_val('company_name', get_val('client_name', 'XXXX'))}</b>", sig_text_style)
+            Paragraph(f"Signed by {signatory_name} duly authorised", sig_text_style),
+            Paragraph("for and on behalf of", sig_text_style),
+            Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
+            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
         ],
+        # Auxilium Signatory 2
         [
-            Paragraph("<br/><br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
-            third_party_sig_block
-        ]
+            Paragraph(f"Signed by {signatory_name} duly authorised", sig_text_style),
+            Paragraph("for and on behalf of", sig_text_style),
+            Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
+            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
+        ],
     ]
-    sig_table = Table(sig_data, colWidths=[85*mm, 85*mm])
-    sig_table.setStyle(TableStyle([
+
+    # Build client signature with potential signature
+    client_company_name = get_val('company_name', get_val('client_name', 'Client Company'))
+
+    sig_row_2 = [
+        # Aventus Signatory 1
+        [
+            Paragraph(f"Signed by {signatory_name_aventus} duly authorised", sig_text_style),
+            Paragraph("for and on behalf of", sig_text_style),
+            Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
+            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
+        ],
+        # Aventus Signatory 2 / Client Signatory
+        [
+            Paragraph(f"Signed by {signatory_name_aventus} duly authorised", sig_text_style),
+            Paragraph("for and on behalf of", sig_text_style),
+            Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
+            build_signature_block(third_party_signature, third_party_signer, signature_date, signature_type),
+        ],
+    ]
+
+    # Create signature tables
+    def create_sig_box(content_list):
+        inner_table = Table([[item] for item in content_list], colWidths=[80*mm])
+        inner_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        return inner_table
+
+    sig_table_1 = Table([
+        [create_sig_box(sig_row_1[0]), create_sig_box(sig_row_1[1])]
+    ], colWidths=[85*mm, 85*mm])
+    sig_table_1.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3*mm),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3*mm),
+        ('BOX', (0, 0), (0, 0), 0.5, colors.lightgrey),
+        ('BOX', (1, 0), (1, 0), 0.5, colors.lightgrey),
+        ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
     ]))
-    elements.append(sig_table)
-    elements.append(Spacer(1, 6*mm))
+    elements.append(sig_table_1)
+    elements.append(Spacer(1, 2*mm))
+
+    sig_table_2 = Table([
+        [create_sig_box(sig_row_2[0]), create_sig_box(sig_row_2[1])]
+    ], colWidths=[85*mm, 85*mm])
+    sig_table_2.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOX', (0, 0), (0, 0), 0.5, colors.lightgrey),
+        ('BOX', (1, 0), (1, 0), 0.5, colors.lightgrey),
+        ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+    ]))
+    elements.append(sig_table_2)
+    elements.append(Spacer(1, 4*mm))
 
     # Footer note
-    elements.append(Paragraph(
-        "Note: Please sign and stamp above and submit this form for further process.",
-        small_style
-    ))
+    footer_note = get_val('footer_note', 'Note: Please sign and stamp above and submit this form for further process.')
+    elements.append(Paragraph(footer_note, small_style))
 
     # Build PDF
     doc.build(elements)

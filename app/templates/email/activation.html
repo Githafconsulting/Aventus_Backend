@@ -1,0 +1,55 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Welcome, {{ contractor_name }}!</h2>
+
+<p class="intro-text">
+    Congratulations! Your account with {{ company_name }} has been activated. You can now access your contractor dashboard to view your information, timesheets, and documents.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">🎉</div>
+    <div class="document-title">Your Account is Ready!</div>
+    <p class="document-desc">
+        Use the credentials below to log in to your dashboard.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Login Credentials</div>
+    <div class="cred-row">
+        <span class="cred-label">Email</span><br>
+        <span class="cred-value">{{ contractor_email }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Temporary Password</span><br>
+        <span class="cred-value">{{ temporary_password }}</span>
+    </div>
+</div>
+
+<div class="notice">
+    <strong>Important Security Notice</strong>
+    <p>For your security, you will be required to change your password upon first login. Please keep your credentials secure and do not share them with anyone.</p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ login_link }}" class="cta-button">Login to Dashboard</a>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    <strong>What you can do in your dashboard:</strong>
+</p>
+<ul style="margin-left: 20px; color: #4a4a4a; font-size: 14px;">
+    <li>View and update your personal information</li>
+    <li>Submit and track timesheets</li>
+    <li>Access your documents and contracts</li>
+    <li>View payment history</li>
+</ul>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

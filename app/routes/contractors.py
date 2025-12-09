@@ -747,8 +747,10 @@ async def submit_cds_form(
         contractor.consultant = form_data['consultant']
     if 'resourcer' in form_data:
         contractor.resourcer = form_data['resourcer']
-    if 'anySplits' in form_data:
-        contractor.any_splits = form_data['anySplits']
+    if 'aventusSplit' in form_data:
+        contractor.aventus_split = form_data['aventusSplit']
+    if 'resourcerSplit' in form_data:
+        contractor.resourcer_split = form_data['resourcerSplit']
 
     # ==========================================
     # SECTION 5: INVOICE DETAILS
@@ -907,10 +909,18 @@ async def submit_costing_sheet(
         )
 
     # Check if contractor is ready for costing sheet submission
-    if contractor.status not in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_CDS_CS, ContractorStatus.PENDING_REVIEW]:
+    # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, CDS_CS_COMPLETED, COHF_COMPLETED (UAE route), PENDING_REVIEW (editing)
+    valid_statuses = [
+        ContractorStatus.DOCUMENTS_UPLOADED,
+        ContractorStatus.PENDING_CDS_CS,
+        ContractorStatus.CDS_CS_COMPLETED,
+        ContractorStatus.COHF_COMPLETED,  # UAE route after COHF is done
+        ContractorStatus.PENDING_REVIEW,  # Allow re-submission after rejection
+    ]
+    if contractor.status not in valid_statuses:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="CDS form must be completed before submitting costing sheet"
+            detail=f"CDS form must be completed before submitting costing sheet. Current status: {contractor.status}"
         )
 
     # Parse JSON body

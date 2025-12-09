@@ -1,0 +1,46 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ contractor_name }}!</h2>
+
+<p class="intro-text">
+    Welcome to {{ company_name }}! We're excited to have you join us. To proceed with your onboarding, we need you to upload a few documents.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📄</div>
+    <div class="document-title">Document Upload Required</div>
+    <p class="document-desc">
+        Please upload your required documents to complete the next step of your onboarding process.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ upload_link }}" class="cta-button">Upload Documents</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive</strong>
+    <p>This link will expire on <strong>{{ expiry_date }}</strong>. Please complete your document upload before this time.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    <strong>Required Documents:</strong>
+</p>
+<ul style="margin-left: 20px; color: #4a4a4a; font-size: 14px;">
+    <li>Valid Passport (bio page)</li>
+    <li>Professional Photo</li>
+    <li>Educational Certificates/Degrees</li>
+</ul>
+
+<p class="intro-text mt-20">
+    If you have any questions about the document requirements, please don't hesitate to reach out to our team.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

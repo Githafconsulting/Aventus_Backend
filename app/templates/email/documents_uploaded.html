@@ -1,0 +1,30 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Documents Uploaded</h2>
+
+<p class="intro-text">
+    A contractor has uploaded their required documents and is ready for review.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📋</div>
+    <div class="document-title">{{ contractor_name }}</div>
+    <p class="document-desc">
+        Documents have been uploaded and are pending your review.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ review_link }}" class="cta-button">Review Documents</a>
+</div>
+
+<div class="info-box">
+    <strong>Action Required</strong>
+    <p>Please review the uploaded documents and proceed with the onboarding process.</p>
+</div>
+
+<div class="signature">
+    <span class="signature-name">{{ company_name }} System</span>
+</div>
+{% endblock %}

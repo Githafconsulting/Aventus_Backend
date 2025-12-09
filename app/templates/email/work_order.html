@@ -1,0 +1,40 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ recipient_name }}!</h2>
+
+<p class="intro-text">
+    A work order has been prepared and requires your attention.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📝</div>
+    <div class="document-title">Work Order</div>
+    <p class="document-desc">For: {{ contractor_name }}</p>
+</div>
+
+{% if client_name %}
+<div class="info-box">
+    <strong>Client</strong>
+    <p>{{ client_name }}</p>
+</div>
+{% endif %}
+
+<div class="cta-container">
+    <a href="{{ work_order_link }}" class="cta-button">View Work Order</a>
+</div>
+
+{% if expiry_date %}
+<div class="notice">
+    <strong>Time-Sensitive</strong>
+    <p>This link will expire on <strong>{{ expiry_date }}</strong>.</p>
+</div>
+{% endif %}
+
+<div class="divider"></div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

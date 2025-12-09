@@ -1,0 +1,37 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ third_party_name }}!</h2>
+
+<p class="intro-text">
+    We are processing the onboarding of <strong>{{ contractor_name }}</strong> and require you to submit a quote sheet for their engagement.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📊</div>
+    <div class="document-title">Quote Sheet Submission Required</div>
+    <p class="document-desc">
+        Please provide the quote sheet with the contractor's rates and fees to proceed with the onboarding process.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ quote_link }}" class="cta-button">Submit Quote Sheet</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Request</strong>
+    <p>This link will expire on <strong>{{ expiry_date }}</strong>. Please submit the quote sheet before this time to avoid delays in the onboarding process.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    The quote sheet should include all applicable rates, fees, and any other charges related to the contractor's engagement. Please ensure all figures are accurate before submission.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

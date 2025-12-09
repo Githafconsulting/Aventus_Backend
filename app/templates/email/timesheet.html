@@ -1,0 +1,51 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ manager_name }}!</h2>
+
+<p class="intro-text">
+    A timesheet has been submitted and requires your review.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">⏰</div>
+    <div class="document-title">Timesheet Submission</div>
+    <p class="document-desc">From: {{ contractor_name }}</p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Timesheet Details</div>
+    <div class="cred-row">
+        <span class="cred-label">Period</span>
+        <span class="cred-value">{{ period | default('Current Period') }}</span>
+    </div>
+    {% if total_hours %}
+    <div class="cred-row">
+        <span class="cred-label">Total Hours</span>
+        <span class="cred-value">{{ total_hours }}</span>
+    </div>
+    {% endif %}
+    {% if client_name %}
+    <div class="cred-row">
+        <span class="cred-label">Client</span>
+        <span class="cred-value">{{ client_name }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="cta-container">
+    <a href="{{ timesheet_link }}" class="cta-button">Review Timesheet</a>
+</div>
+
+<div class="notice">
+    <strong>Action Required</strong>
+    <p>Please review and approve or reject this timesheet.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

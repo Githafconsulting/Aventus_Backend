@@ -253,8 +253,9 @@ class Contractor(Base):
 
     # Aventus Deal
     consultant = Column(String, nullable=True)
-    any_splits = Column(String, nullable=True)
     resourcer = Column(String, nullable=True)
+    aventus_split = Column(String, nullable=True)  # Aventus commission split percentage
+    resourcer_split = Column(String, nullable=True)  # Resourcer commission split percentage
 
     # Invoice Details
     timesheet_required = Column(String, nullable=True)

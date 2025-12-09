@@ -1,0 +1,48 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ third_party_name }}!</h2>
+
+<p class="intro-text">
+    We have a new contractor request that requires your attention.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">👤</div>
+    <div class="document-title">New Contractor Request</div>
+    <p class="document-desc">Candidate: {{ contractor_name }}</p>
+</div>
+
+{% if role %}
+<div class="info-box">
+    <strong>Position Details</strong>
+    <p>Role: {{ role }}<br>
+    {% if client_name %}Client: {{ client_name }}{% endif %}</p>
+</div>
+{% endif %}
+
+{% if custom_message %}
+<div class="credentials">
+    <div class="credentials-title">Message</div>
+    <p style="font-size: 14px; color: #4a4a4a;">{{ custom_message }}</p>
+</div>
+{% endif %}
+
+<div class="cta-container">
+    <a href="{{ action_link }}" class="cta-button">View Request</a>
+</div>
+
+{% if expiry_date %}
+<div class="notice">
+    <strong>Time-Sensitive</strong>
+    <p>Please respond by <strong>{{ expiry_date }}</strong>.</p>
+</div>
+{% endif %}
+
+<div class="divider"></div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

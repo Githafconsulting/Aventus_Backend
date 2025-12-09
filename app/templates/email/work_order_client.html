@@ -1,0 +1,46 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ client_name }}!</h2>
+
+<p class="intro-text">
+    A work order for <strong>{{ contractor_name }}</strong> is ready for your review and signature. This work order outlines the terms of engagement for the contractor's services.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📄</div>
+    <div class="document-title">Work Order Signature Required</div>
+    <p class="document-desc">
+        Please review and sign the work order to authorize the contractor's engagement.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ signing_link }}" class="cta-button">Review & Sign Work Order</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Document</strong>
+    <p>This signing link will expire on <strong>{{ expiry_date }}</strong>. Please complete the signature before this time.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    The work order includes important details such as:
+</p>
+<ul style="margin-left: 20px; color: #4a4a4a; font-size: 14px;">
+    <li>Contractor's role and responsibilities</li>
+    <li>Contract duration and rates</li>
+    <li>Terms and conditions of engagement</li>
+</ul>
+
+<p class="intro-text mt-20">
+    Please review all details carefully before signing. If you have any questions or need modifications, contact our team before proceeding.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

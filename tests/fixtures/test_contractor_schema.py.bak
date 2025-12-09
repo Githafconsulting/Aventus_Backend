@@ -1,0 +1,536 @@
+import pytest
+from pydantic import ValidationError
+from datetime import datetime
+from app.schemas.contractor import (
+    ContractorCreate,
+    ContractorUpdate,
+    SignatureSubmission,
+    CostingSheetData,
+    ContractorResponse,
+    ContractorDetailResponse
+)
+
+
+class TestContractorCreate:
+    """Test ContractorCreate schema"""
+
+    def test_contractor_create_minimal_fields(self):
+        """Test creating contractor with minimal required fields"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "john.doe@example.com",
+            "dob": "1990-01-01"
+        }
+
+        contractor = ContractorCreate(**data)
+
+        assert contractor.first_name == "John"
+        assert contractor.surname == "Doe"
+        assert contractor.gender == "Male"
+        assert contractor.nationality == "American"
+        assert contractor.email == "john.doe@example.com"
+        assert contractor.phone == "+1234567890"
+        assert contractor.currency == "SAR"  # Default value
+
+    def test_contractor_create_all_fields(self):
+        """Test creating contractor with all fields"""
+        data = {
+            "first_name": "Jane",
+            "surname": "Smith",
+            "gender": "Female",
+            "nationality": "British",
+            "home_address": "456 Oak Ave",
+            "address_line3": "Suite 100",
+            "address_line4": "Building A",
+            "phone": "+4420123456",
+            "email": "jane.smith@example.com",
+            "dob": "1985-05-15",
+            "umbrella_company_name": "Umbrella Corp",
+            "registered_address": "789 Business Rd",
+            "client_name": "ABC Company",
+            "role": "Software Engineer",
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "location": "London",
+            "duration": "12 months",
+            "currency": "GBP",
+            "client_charge_rate": "100",
+            "candidate_pay_rate": "80",
+            "other_notes": "Special requirements"
+        }
+
+        contractor = ContractorCreate(**data)
+
+        assert contractor.first_name == "Jane"
+        assert contractor.surname == "Smith"
+        assert contractor.email == "jane.smith@example.com"
+        assert contractor.client_name == "ABC Company"
+        assert contractor.role == "Software Engineer"
+        assert contractor.currency == "GBP"
+
+    def test_contractor_create_invalid_email(self):
+        """Test that invalid email raises ValidationError"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "invalid-email",  # Invalid email format
+            "dob": "1990-01-01"
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ContractorCreate(**data)
+
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("email",) for error in errors)
+
+    def test_contractor_create_missing_required_fields(self):
+        """Test that missing required fields raises ValidationError"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe"
+            # Missing required fields
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ContractorCreate(**data)
+
+        errors = exc_info.value.errors()
+        required_fields = {"gender", "nationality", "home_address", "phone", "email", "dob"}
+        error_fields = {error["loc"][0] for error in errors}
+        assert required_fields.issubset(error_fields)
+
+    def test_contractor_create_optional_fields_none(self):
+        """Test that optional fields can be None"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "john.doe@example.com",
+            "dob": "1990-01-01",
+            "client_name": None,
+            "role": None
+        }
+
+        contractor = ContractorCreate(**data)
+
+        assert contractor.client_name is None
+        assert contractor.role is None
+
+    def test_contractor_create_currency_default(self):
+        """Test that currency defaults to SAR"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "john.doe@example.com",
+            "dob": "1990-01-01"
+        }
+
+        contractor = ContractorCreate(**data)
+
+        assert contractor.currency == "SAR"
+
+
+class TestContractorUpdate:
+    """Test ContractorUpdate schema"""
+
+    def test_contractor_update_all_fields_optional(self):
+        """Test that all fields in ContractorUpdate are optional"""
+        contractor = ContractorUpdate()
+
+        assert contractor.first_name is None
+        assert contractor.surname is None
+        assert contractor.email is None
+        assert contractor.phone is None
+
+    def test_contractor_update_partial_update(self):
+        """Test updating only specific fields"""
+        data = {
+            "first_name": "UpdatedName",
+            "email": "updated@example.com"
+        }
+
+        contractor = ContractorUpdate(**data)
+
+        assert contractor.first_name == "UpdatedName"
+        assert contractor.email == "updated@example.com"
+        assert contractor.surname is None
+        assert contractor.phone is None
+
+    def test_contractor_update_invalid_email(self):
+        """Test that invalid email raises ValidationError"""
+        data = {
+            "email": "invalid-email"
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ContractorUpdate(**data)
+
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("email",) for error in errors)
+
+
+class TestSignatureSubmission:
+    """Test SignatureSubmission schema"""
+
+    def test_signature_submission_typed(self):
+        """Test signature submission with typed signature"""
+        data = {
+            "signature_type": "typed",
+            "signature_data": "John Doe"
+        }
+
+        signature = SignatureSubmission(**data)
+
+        assert signature.signature_type == "typed"
+        assert signature.signature_data == "John Doe"
+
+    def test_signature_submission_drawn(self):
+        """Test signature submission with drawn signature"""
+        data = {
+            "signature_type": "drawn",
+            "signature_data": "base64encodedimagedata"
+        }
+
+        signature = SignatureSubmission(**data)
+
+        assert signature.signature_type == "drawn"
+        assert signature.signature_data == "base64encodedimagedata"
+
+    def test_signature_submission_missing_fields(self):
+        """Test that missing fields raise ValidationError"""
+        with pytest.raises(ValidationError) as exc_info:
+            SignatureSubmission(signature_type="typed")
+
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("signature_data",) for error in errors)
+
+
+class TestCostingSheetData:
+    """Test CostingSheetData schema"""
+
+    def test_costing_sheet_data_required_fields(self):
+        """Test CostingSheetData with required fields"""
+        data = {
+            "client_name": "Test Client",
+            "role": "Software Engineer",
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "location": "London",
+            "client_charge_rate": "100",
+            "candidate_pay_rate": "80"
+        }
+
+        costing = CostingSheetData(**data)
+
+        assert costing.client_name == "Test Client"
+        assert costing.role == "Software Engineer"
+        assert costing.currency == "SAR"  # Default value
+
+    def test_costing_sheet_data_all_fields(self):
+        """Test CostingSheetData with all fields"""
+        data = {
+            "client_name": "Test Client",
+            "role": "Software Engineer",
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "location": "London",
+            "client_charge_rate": "100",
+            "candidate_pay_rate": "80",
+            "currency": "GBP",
+            "gender": "Male",
+            "nationality": "British"
+        }
+
+        costing = CostingSheetData(**data)
+
+        assert costing.currency == "GBP"
+        assert costing.gender == "Male"
+
+    def test_costing_sheet_data_missing_required(self):
+        """Test that missing required fields raises ValidationError"""
+        with pytest.raises(ValidationError) as exc_info:
+            CostingSheetData()
+
+        errors = exc_info.value.errors()
+        required_fields = {"client_name", "role", "start_date", "end_date", "location", "client_charge_rate", "candidate_pay_rate"}
+        error_fields = {error["loc"][0] for error in errors}
+        assert required_fields.issubset(error_fields)
+
+
+class TestContractorResponse:
+    """Test ContractorResponse schema"""
+
+    def test_contractor_response_minimal(self):
+        """Test contractor response with minimal fields"""
+        data = {
+            "id": "test-001",
+            "status": "draft",
+            "first_name": "John",
+            "surname": "Doe",
+            "email": "john.doe@example.com",
+            "phone": "+1234567890",
+            "nationality": "American",
+            "created_at": datetime.now()
+        }
+
+        response = ContractorResponse(**data)
+
+        assert response.id == "test-001"
+        assert response.status == "draft"
+        assert response.first_name == "John"
+        assert response.email == "john.doe@example.com"
+
+    def test_contractor_response_with_optional_fields(self):
+        """Test contractor response with optional fields"""
+        now = datetime.now()
+        data = {
+            "id": "test-002",
+            "status": "active",
+            "first_name": "Jane",
+            "surname": "Smith",
+            "email": "jane.smith@example.com",
+            "phone": "+4420123456",
+            "nationality": "British",
+            "role": "Software Engineer",
+            "client_name": "ABC Company",
+            "start_date": "2024-01-01",
+            "contract_token": "token123",
+            "sent_date": now,
+            "signed_date": now,
+            "activated_date": now,
+            "created_at": now,
+            "updated_at": now
+        }
+
+        response = ContractorResponse(**data)
+
+        assert response.role == "Software Engineer"
+        assert response.client_name == "ABC Company"
+        assert response.contract_token == "token123"
+        assert response.sent_date == now
+
+    def test_contractor_response_missing_required_fields(self):
+        """Test that missing required fields raises ValidationError"""
+        data = {
+            "id": "test-003",
+            "status": "draft"
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ContractorResponse(**data)
+
+        errors = exc_info.value.errors()
+        required_fields = {"first_name", "surname", "email", "phone", "nationality", "created_at"}
+        error_fields = {error["loc"][0] for error in errors}
+        assert required_fields.issubset(error_fields)
+
+
+class TestContractorDetailResponse:
+    """Test ContractorDetailResponse schema"""
+
+    def test_contractor_detail_response_minimal(self):
+        """Test contractor detail response with minimal fields"""
+        now = datetime.now()
+        data = {
+            "id": "test-001",
+            "status": "draft",
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "john.doe@example.com",
+            "dob": "1990-01-01",
+            "created_at": now
+        }
+
+        response = ContractorDetailResponse(**data)
+
+        assert response.id == "test-001"
+        assert response.status == "draft"
+        assert response.first_name == "John"
+        assert response.email == "john.doe@example.com"
+        assert response.home_address == "123 Main St"
+        assert response.dob == "1990-01-01"
+
+    def test_contractor_detail_response_full(self):
+        """Test contractor detail response with all fields"""
+        now = datetime.now()
+        data = {
+            "id": "test-002",
+            "status": "active",
+            "first_name": "Jane",
+            "surname": "Smith",
+            "gender": "Female",
+            "nationality": "British",
+            "home_address": "456 Oak Ave",
+            "phone": "+4420123456",
+            "email": "jane.smith@example.com",
+            "dob": "1985-05-15",
+            "client_name": "ABC Company",
+            "role": "Software Engineer",
+            "location": "London",
+            "currency": "GBP",
+            "contract_token": "token123",
+            "signature_type": "typed",
+            "signature_data": "Jane Smith",
+            "generated_contract": "Contract text here",
+            "sent_date": now,
+            "signed_date": now,
+            "activated_date": now,
+            "created_at": now,
+            "updated_at": now
+        }
+
+        response = ContractorDetailResponse(**data)
+
+        assert response.id == "test-002"
+        assert response.status == "active"
+        assert response.client_name == "ABC Company"
+        assert response.role == "Software Engineer"
+        assert response.location == "London"
+        assert response.currency == "GBP"
+        assert response.signature_type == "typed"
+        assert response.generated_contract == "Contract text here"
+
+    def test_contractor_detail_response_currency_default(self):
+        """Test that currency defaults to SAR"""
+        now = datetime.now()
+        data = {
+            "id": "test-003",
+            "status": "draft",
+            "first_name": "Bob",
+            "surname": "Wilson",
+            "gender": "Male",
+            "nationality": "Canadian",
+            "home_address": "789 Maple St",
+            "phone": "+1987654321",
+            "email": "bob.wilson@example.com",
+            "dob": "1992-03-20",
+            "created_at": now
+        }
+
+        response = ContractorDetailResponse(**data)
+
+        assert response.currency == "SAR"
+
+    def test_contractor_detail_response_optional_fields_none(self):
+        """Test that optional fields can be None"""
+        now = datetime.now()
+        data = {
+            "id": "test-004",
+            "status": "draft",
+            "first_name": "Alice",
+            "surname": "Johnson",
+            "gender": "Female",
+            "nationality": "Australian",
+            "home_address": "111 Beach Rd",
+            "phone": "+61123456789",
+            "email": "alice@example.com",
+            "dob": "1988-07-10",
+            "created_at": now,
+            "client_name": None,
+            "role": None,
+            "location": None
+        }
+
+        response = ContractorDetailResponse(**data)
+
+        assert response.client_name is None
+        assert response.role is None
+        assert response.location is None
+        assert response.contract_token is None
+        assert response.signature_type is None
+
+    def test_contractor_detail_response_from_attributes(self):
+        """Test that Config.from_attributes is set to True"""
+        assert ContractorDetailResponse.model_config.get("from_attributes") is True
+        assert ContractorResponse.model_config.get("from_attributes") is True
+
+
+class TestSchemaValidation:
+    """Test cross-schema validation scenarios"""
+
+    def test_valid_email_formats(self):
+        """Test various valid email formats"""
+        valid_emails = [
+            "user@example.com",
+            "user.name@example.com",
+            "user+tag@example.co.uk",
+            "user_name@sub.example.com"
+        ]
+
+        for email in valid_emails:
+            data = {
+                "first_name": "Test",
+                "surname": "User",
+                "gender": "Male",
+                "nationality": "Test",
+                "home_address": "Test Address",
+                "phone": "+1234567890",
+                "email": email,
+                "dob": "1990-01-01"
+            }
+            contractor = ContractorCreate(**data)
+            assert contractor.email == email
+
+    def test_invalid_email_formats(self):
+        """Test various invalid email formats"""
+        invalid_emails = [
+            "invalid",
+            "@example.com",
+            "user@",
+            "user @example.com",
+            "user@.com"
+        ]
+
+        for email in invalid_emails:
+            data = {
+                "first_name": "Test",
+                "surname": "User",
+                "gender": "Male",
+                "nationality": "Test",
+                "home_address": "Test Address",
+                "phone": "+1234567890",
+                "email": email,
+                "dob": "1990-01-01"
+            }
+            with pytest.raises(ValidationError):
+                ContractorCreate(**data)
+
+    def test_schema_serialization(self):
+        """Test that schemas can be serialized to dict"""
+        data = {
+            "first_name": "John",
+            "surname": "Doe",
+            "gender": "Male",
+            "nationality": "American",
+            "home_address": "123 Main St",
+            "phone": "+1234567890",
+            "email": "john.doe@example.com",
+            "dob": "1990-01-01"
+        }
+
+        contractor = ContractorCreate(**data)
+        contractor_dict = contractor.model_dump()
+
+        assert contractor_dict["first_name"] == "John"
+        assert contractor_dict["email"] == "john.doe@example.com"
+        assert contractor_dict["currency"] == "SAR"

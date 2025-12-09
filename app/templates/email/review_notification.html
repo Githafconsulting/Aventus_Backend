@@ -1,0 +1,30 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Review Required</h2>
+
+<p class="intro-text">
+    A contractor requires your attention for <strong>{{ notification_type }}</strong>.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">👀</div>
+    <div class="document-title">{{ contractor_name }}</div>
+    <p class="document-desc">
+        {{ notification_type }}
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ review_link }}" class="cta-button">Review Now</a>
+</div>
+
+<div class="info-box">
+    <strong>Action Required</strong>
+    <p>Please review and take the necessary action to proceed with the onboarding process.</p>
+</div>
+
+<div class="signature">
+    <span class="signature-name">{{ company_name }} System</span>
+</div>
+{% endblock %}

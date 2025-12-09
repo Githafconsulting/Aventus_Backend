@@ -1,0 +1,118 @@
+# Aventus Backend - Docker Compose for Local Development
+# Usage: docker-compose -f docker/docker-compose.yml up
+
+version: '3.8'
+
+services:
+  # Main API service
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: aventus-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../app:/app/app:ro  # Mount app code for hot reload in dev
+    networks:
+      - aventus-network
+    restart: unless-stopped
+
+  # Background worker service
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: aventus-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=development
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aventus-network
+    restart: unless-stopped
+
+  # PostgreSQL database (for local development)
+  postgres:
+    image: postgres:15-alpine
+    container_name: aventus-postgres
+    environment:
+      - POSTGRES_USER=aventus
+      - POSTGRES_PASSWORD=aventus_dev_password
+      - POSTGRES_DB=aventus
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aventus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aventus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching, sessions, rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: aventus-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aventus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin for database management (optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aventus-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@aventus.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - aventus-network
+    restart: unless-stopped
+    profiles:
+      - tools  # Only start with: docker-compose --profile tools up
+
+networks:
+  aventus-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

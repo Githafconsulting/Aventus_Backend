@@ -1,0 +1,42 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ contractor_name }}!</h2>
+
+<p class="intro-text">
+    Great news! Your employment contract is ready for review and signature. This is an important step in finalizing your onboarding with {{ company_name }}.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📝</div>
+    <div class="document-title">Your Employment Contract is Ready</div>
+    <p class="document-desc">
+        Please review and sign your employment contract to complete your onboarding.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ contract_link }}" class="cta-button">Review & Sign Contract</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Document</strong>
+    <p>This contract link will expire on <strong>{{ expiry_date }}</strong>. Please review and sign it at your earliest convenience.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Before You Sign</strong>
+    <p>Please read the contract carefully and ensure all details are correct. If you have any questions or concerns, contact our HR team before signing.</p>
+</div>
+
+<p class="intro-text">
+    Once you've signed the contract, you'll receive confirmation and further instructions about your start date and next steps.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

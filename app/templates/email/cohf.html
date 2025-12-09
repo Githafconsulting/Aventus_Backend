@@ -1,0 +1,41 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ third_party_name }}!</h2>
+
+<p class="intro-text">
+    We are processing the onboarding of <strong>{{ contractor_name }}</strong> and require your signature on the Confirmation of Hiring Form (COHF).
+</p>
+
+<div class="document-box">
+    <div class="document-icon">✍️</div>
+    <div class="document-title">COHF Signature Required</div>
+    <p class="document-desc">
+        Please review and sign the Confirmation of Hiring Form to proceed with the contractor's onboarding.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ signing_link }}" class="cta-button">Review & Sign COHF</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Document</strong>
+    <p>This signing link will expire on <strong>{{ expiry_date }}</strong>. Please complete the signature before this time to avoid delays.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    The COHF confirms the hiring arrangement and includes important details about the contractor's engagement. Please review all information carefully before signing.
+</p>
+
+<p class="intro-text">
+    If you have any questions about the document or the hiring process, please contact our team.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

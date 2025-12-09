@@ -37,6 +37,10 @@ class ContractorInitialCreate(BaseModel):
     phone: str
 
 
+# Alias for backward compatibility and service layer usage
+ContractorCreate = ContractorInitialCreate
+
+
 class CostingSheetData(BaseModel):
     """Schema for costing sheet submission by consultant"""
     # Personal Details (if not already filled)
@@ -514,8 +518,9 @@ class ContractorDetailResponse(BaseModel):
 
     # Aventus Deal
     consultant: Optional[str] = None
-    any_splits: Optional[str] = None
     resourcer: Optional[str] = None
+    aventus_split: Optional[str] = None
+    resourcer_split: Optional[str] = None
 
     # Invoice Details
     timesheet_required: Optional[str] = None

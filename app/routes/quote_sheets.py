@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.database import get_db
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.models.contractor import Contractor
@@ -10,9 +11,11 @@ from app.schemas.quote_sheet import QuoteSheetCreate, QuoteSheetUpdate, QuoteShe
 from app.utils.auth import get_current_active_user
 from app.utils.email import send_quote_sheet_request_email
 from app.utils.storage import storage
+from app.utils.quote_sheet_pdf_generator import generate_quote_sheet_pdf
 from datetime import datetime, timedelta
 import uuid
 import secrets
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/quote-sheets", tags=["quote-sheets"])
 
@@ -315,3 +318,320 @@ async def delete_quote_sheet(
     db.commit()
 
     return None
+
+
+# ============== NEW ENDPOINTS FOR FORM SUBMISSION ==============
+
+class QuoteSheetFormData(BaseModel):
+    """Schema for Quote Sheet form submission by third party"""
+    # (A) Employee Contract Information
+    employee_name: Optional[str] = None
+    role: Optional[str] = None
+    date_of_hiring: Optional[str] = None
+    nationality: Optional[str] = None
+    family_status: Optional[str] = None
+    num_children: Optional[str] = None
+
+    # (B) Employee Cash Benefits
+    basic_salary: Optional[float] = None
+    transport_allowance: Optional[float] = None
+    housing_allowance: Optional[float] = None
+    rate_per_day: Optional[float] = None
+    working_days_month: Optional[float] = None
+    aed_to_sar: Optional[float] = None
+    gross_salary: Optional[float] = None
+
+    # (C) Employee Cost
+    vacation_one_time: Optional[float] = None
+    vacation_annual: Optional[float] = None
+    vacation_monthly: Optional[float] = None
+    flight_one_time: Optional[float] = None
+    flight_annual: Optional[float] = None
+    flight_monthly: Optional[float] = None
+    eosb_one_time: Optional[float] = None
+    eosb_annual: Optional[float] = None
+    eosb_monthly: Optional[float] = None
+    gosi_one_time: Optional[float] = None
+    gosi_annual: Optional[float] = None
+    gosi_monthly: Optional[float] = None
+    medical_one_time: Optional[float] = None
+    medical_annual: Optional[float] = None
+    medical_monthly: Optional[float] = None
+    exit_reentry_one_time: Optional[float] = None
+    exit_reentry_annual: Optional[float] = None
+    exit_reentry_monthly: Optional[float] = None
+    salary_transfer_one_time: Optional[float] = None
+    salary_transfer_annual: Optional[float] = None
+    salary_transfer_monthly: Optional[float] = None
+    sick_leave_one_time: Optional[float] = None
+    sick_leave_annual: Optional[float] = None
+    sick_leave_monthly: Optional[float] = None
+    employee_cost_one_time_total: Optional[float] = None
+    employee_cost_annual_total: Optional[float] = None
+    employee_cost_monthly_total: Optional[float] = None
+
+    # (D) Family Cost
+    family_medical_one_time: Optional[float] = None
+    family_medical_annual: Optional[float] = None
+    family_medical_monthly: Optional[float] = None
+    family_flight_one_time: Optional[float] = None
+    family_flight_annual: Optional[float] = None
+    family_flight_monthly: Optional[float] = None
+    family_exit_one_time: Optional[float] = None
+    family_exit_annual: Optional[float] = None
+    family_exit_monthly: Optional[float] = None
+    family_joining_one_time: Optional[float] = None
+    family_joining_annual: Optional[float] = None
+    family_joining_monthly: Optional[float] = None
+    family_visa_one_time: Optional[float] = None
+    family_visa_annual: Optional[float] = None
+    family_visa_monthly: Optional[float] = None
+    family_levy_one_time: Optional[float] = None
+    family_levy_annual: Optional[float] = None
+    family_levy_monthly: Optional[float] = None
+    family_cost_one_time_total: Optional[float] = None
+    family_cost_annual_total: Optional[float] = None
+    family_cost_monthly_total: Optional[float] = None
+
+    # (E) Government Related Charges
+    sce_one_time: Optional[float] = None
+    sce_annual: Optional[float] = None
+    sce_monthly: Optional[float] = None
+    medical_test_one_time: Optional[float] = None
+    medical_test_annual: Optional[float] = None
+    medical_test_monthly: Optional[float] = None
+    visa_cost_one_time: Optional[float] = None
+    visa_cost_annual: Optional[float] = None
+    visa_cost_monthly: Optional[float] = None
+    ewakala_one_time: Optional[float] = None
+    ewakala_annual: Optional[float] = None
+    ewakala_monthly: Optional[float] = None
+    chamber_mofa_one_time: Optional[float] = None
+    chamber_mofa_annual: Optional[float] = None
+    chamber_mofa_monthly: Optional[float] = None
+    iqama_one_time: Optional[float] = None
+    iqama_annual: Optional[float] = None
+    iqama_monthly: Optional[float] = None
+    saudi_admin_one_time: Optional[float] = None
+    saudi_admin_annual: Optional[float] = None
+    saudi_admin_monthly: Optional[float] = None
+    ajeer_one_time: Optional[float] = None
+    ajeer_annual: Optional[float] = None
+    ajeer_monthly: Optional[float] = None
+    govt_cost_one_time_total: Optional[float] = None
+    govt_cost_annual_total: Optional[float] = None
+    govt_cost_monthly_total: Optional[float] = None
+
+    # (F) Mobilization Cost
+    visa_processing_one_time: Optional[float] = None
+    visa_processing_annual: Optional[float] = None
+    visa_processing_monthly: Optional[float] = None
+    recruitment_one_time: Optional[float] = None
+    recruitment_annual: Optional[float] = None
+    recruitment_monthly: Optional[float] = None
+    joining_ticket_one_time: Optional[float] = None
+    joining_ticket_annual: Optional[float] = None
+    joining_ticket_monthly: Optional[float] = None
+    relocation_one_time: Optional[float] = None
+    relocation_annual: Optional[float] = None
+    relocation_monthly: Optional[float] = None
+    other_cost_one_time: Optional[float] = None
+    other_cost_annual: Optional[float] = None
+    other_cost_monthly: Optional[float] = None
+    mobilization_one_time_total: Optional[float] = None
+    mobilization_annual_total: Optional[float] = None
+    mobilization_monthly_total: Optional[float] = None
+
+    # Grand Totals
+    total_one_time: Optional[float] = None
+    total_annual: Optional[float] = None
+    total_monthly: Optional[float] = None
+    fnrco_service_charge: Optional[float] = None
+    total_invoice_amount: Optional[float] = None
+
+    # Remarks
+    remarks_data: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+@router.post("/submit/{token}")
+async def submit_quote_sheet_form(
+    token: str,
+    form_data: QuoteSheetFormData,
+    db: Session = Depends(get_db)
+):
+    """
+    Submit Quote Sheet form data by third party using their token.
+    This generates a PDF and saves all the form data.
+    """
+    # Find quote sheet by token
+    quote_sheet = db.query(QuoteSheet).filter(QuoteSheet.upload_token == token).first()
+
+    if not quote_sheet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid token"
+        )
+
+    # Check token expiry
+    if datetime.utcnow() > quote_sheet.token_expiry:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token has expired"
+        )
+
+    # Update all form fields
+    form_dict = form_data.model_dump(exclude_unset=True)
+    for field, value in form_dict.items():
+        if hasattr(quote_sheet, field):
+            setattr(quote_sheet, field, value)
+
+    # Set issued date if not provided
+    if not quote_sheet.issued_date:
+        quote_sheet.issued_date = datetime.now().strftime('%B %d, %Y')
+
+    # Generate PDF
+    try:
+        # Prepare data for PDF generation
+        pdf_data = {
+            **form_dict,
+            'contractor_name': quote_sheet.contractor_name,
+            'third_party_company_name': quote_sheet.third_party_company_name,
+            'issued_date': quote_sheet.issued_date,
+        }
+
+        pdf_buffer = generate_quote_sheet_pdf(pdf_data)
+
+        # Upload PDF to storage
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        filename = f"quote-sheets/{quote_sheet.id}/quote_sheet_{timestamp}_{unique_id}.pdf"
+
+        response = storage.client.storage.from_(storage.bucket).upload(
+            filename,
+            pdf_buffer.getvalue(),
+            file_options={"content-type": "application/pdf"}
+        )
+
+        file_url = storage.client.storage.from_(storage.bucket).get_public_url(filename)
+
+        quote_sheet.document_url = file_url
+        quote_sheet.document_filename = f"Quote_Sheet_{quote_sheet.contractor_name}_{timestamp}.pdf"
+
+    except Exception as e:
+        print(f"Error generating/uploading PDF: {e}")
+        # Continue without PDF if it fails
+
+    # Update status and timestamps
+    quote_sheet.status = QuoteSheetStatus.SUBMITTED
+    quote_sheet.submitted_at = datetime.utcnow()
+
+    # Update contractor status
+    from app.models.contractor import ContractorStatus
+    contractor = db.query(Contractor).filter(Contractor.id == quote_sheet.contractor_id).first()
+    if contractor:
+        contractor.status = ContractorStatus.PENDING_CDS_CS
+        contractor.third_party_response_received_date = datetime.utcnow()
+        if quote_sheet.document_url:
+            contractor.third_party_document = quote_sheet.document_url
+        contractor.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(quote_sheet)
+
+    return {
+        "message": "Quote sheet submitted successfully",
+        "quote_sheet_id": quote_sheet.id,
+        "document_url": quote_sheet.document_url
+    }
+
+
+@router.get("/preview-pdf/{token}")
+async def preview_quote_sheet_pdf(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Preview Quote Sheet as PDF (public endpoint for third parties)
+    """
+    quote_sheet = db.query(QuoteSheet).filter(QuoteSheet.upload_token == token).first()
+
+    if not quote_sheet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid token"
+        )
+
+    # Generate PDF with current data
+    pdf_data = {
+        'contractor_name': quote_sheet.contractor_name,
+        'third_party_company_name': quote_sheet.third_party_company_name,
+        'issued_date': quote_sheet.issued_date or datetime.now().strftime('%B %d, %Y'),
+        'employee_name': quote_sheet.employee_name,
+        'role': quote_sheet.role,
+        'date_of_hiring': quote_sheet.date_of_hiring,
+        'nationality': quote_sheet.nationality,
+        'family_status': quote_sheet.family_status,
+        'num_children': quote_sheet.num_children,
+        'basic_salary': quote_sheet.basic_salary,
+        'transport_allowance': quote_sheet.transport_allowance,
+        'housing_allowance': quote_sheet.housing_allowance,
+        'rate_per_day': quote_sheet.rate_per_day,
+        'working_days_month': quote_sheet.working_days_month,
+        'aed_to_sar': quote_sheet.aed_to_sar,
+        'gross_salary': quote_sheet.gross_salary,
+        # ... all other fields would be included here
+    }
+
+    # Get all fields from model
+    for column in QuoteSheet.__table__.columns:
+        if column.name not in pdf_data:
+            pdf_data[column.name] = getattr(quote_sheet, column.name, None)
+
+    pdf_buffer = generate_quote_sheet_pdf(pdf_data)
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=quote_sheet_preview.pdf"}
+    )
+
+
+@router.get("/download-pdf/{quote_sheet_id}")
+async def download_quote_sheet_pdf(
+    quote_sheet_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Download Quote Sheet PDF (authenticated endpoint)
+    """
+    quote_sheet = db.query(QuoteSheet).filter(QuoteSheet.id == quote_sheet_id).first()
+
+    if not quote_sheet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quote sheet not found"
+        )
+
+    # Check permissions
+    if current_user.role == UserRole.CONSULTANT and quote_sheet.consultant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to download this quote sheet"
+        )
+
+    # Generate PDF with all data
+    pdf_data = {}
+    for column in QuoteSheet.__table__.columns:
+        pdf_data[column.name] = getattr(quote_sheet, column.name, None)
+
+    pdf_buffer = generate_quote_sheet_pdf(pdf_data)
+
+    filename = f"Quote_Sheet_{quote_sheet.contractor_name or 'Unknown'}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
