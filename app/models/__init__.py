@@ -8,5 +8,6 @@ from app.models.third_party import ThirdParty
 from app.models.template import Template, TemplateType
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.models.proposal import Proposal, ProposalStatus
+from app.models.payroll import Payroll, PayrollStatus
 
-__all__ = ["User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet", "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus", "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus", "Proposal", "ProposalStatus"]
+__all__ = ["User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet", "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus", "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus", "Proposal", "ProposalStatus", "Payroll", "PayrollStatus"]

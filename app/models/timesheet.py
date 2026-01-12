@@ -57,3 +57,4 @@ class Timesheet(Base):
 
     # Relationships
     contractor = relationship("Contractor", back_populates="timesheets")
+    payroll = relationship("Payroll", back_populates="timesheet", uselist=False)
