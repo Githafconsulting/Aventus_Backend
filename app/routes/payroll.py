@@ -36,9 +36,19 @@ def _get_vat_rate(country: str) -> float:
 
 def _get_contractor_full_info(contractor: Contractor, db: Session) -> dict:
     """Extract all pay-related information from contractor."""
-    # Basic rate info
-    rate_type = (contractor.rate_type or "monthly").lower()
-    currency = contractor.currency or "AED"
+    # Basic rate info - check CDS form data first, then contractor column
+    rate_type = "monthly"  # Default
+    if contractor.cds_form_data and contractor.cds_form_data.get("rateType"):
+        rate_type = contractor.cds_form_data["rateType"].lower()
+    elif contractor.rate_type:
+        rate_type = contractor.rate_type.lower()
+
+    # Currency - check CDS form data first
+    currency = "AED"  # Default
+    if contractor.cds_form_data and contractor.cds_form_data.get("currency"):
+        currency = contractor.cds_form_data["currency"]
+    elif contractor.currency:
+        currency = contractor.currency
 
     # Get monthly rate from CDS
     monthly_rate = 0
