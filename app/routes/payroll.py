@@ -43,6 +43,10 @@ def _get_contractor_full_info(contractor: Contractor, db: Session) -> dict:
     elif contractor.rate_type:
         rate_type = contractor.rate_type.lower()
 
+    # Normalize rate type: "day" -> "daily" for consistency
+    if rate_type == "day":
+        rate_type = "daily"
+
     # Currency - check CDS form data first
     currency = "AED"  # Default
     if contractor.cds_form_data and contractor.cds_form_data.get("currency"):
