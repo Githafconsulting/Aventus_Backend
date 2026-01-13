@@ -67,9 +67,16 @@ async def create_contractor_initial(
     NEW Step 1: Consultant creates initial contractor entry (name, email, phone)
     and sends document upload link to contractor
     """
+    print("=" * 60)
+    print("[ENDPOINT] /contractors/initial HIT!")
+    print(f"[ENDPOINT] Data received: {contractor_data}")
+    print(f"[ENDPOINT] User: {current_user.email} (role: {current_user.role})")
+    print("=" * 60)
+
     # Check if contractor email already exists
     existing = db.query(Contractor).filter(Contractor.email == contractor_data.email).first()
     if existing:
+        print(f"[ENDPOINT] ERROR: Contractor with email {contractor_data.email} already exists")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contractor with this email already exists"
@@ -108,13 +115,19 @@ async def create_contractor_initial(
     # Send document upload email to contractor
     contractor_name = f"{contractor.first_name} {contractor.surname}"
 
+    print(f"[ENDPOINT] Contractor created: {contractor.id}")
+    print(f"[ENDPOINT] Now sending email to: {contractor.email}")
+    print(f"[ENDPOINT] Token: {document_token}")
+
     try:
+        print(f"[ENDPOINT] Calling send_document_upload_email()...")
         email_sent = send_document_upload_email(
             contractor_email=contractor.email,
             contractor_name=contractor_name,
-            document_token=document_token,
+            upload_token=document_token,
             expiry_date=token_expiry
         )
+        print(f"[ENDPOINT] send_document_upload_email returned: {email_sent}")
 
         if email_sent:
             print(f"[SUCCESS] Document upload email sent to {contractor.email}")
@@ -122,8 +135,11 @@ async def create_contractor_initial(
             print(f"[WARNING] Failed to send document upload email to {contractor.email}")
     except Exception as e:
         print(f"[ERROR] Exception sending document upload email: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
     print(f"[INFO] Document upload URL: {settings.frontend_url}/documents/upload/{document_token}")
+    print("=" * 60)
 
     return contractor
 
@@ -1328,15 +1344,18 @@ async def approve_contractor_work_order(
     client_email = client.contact_person_email if client.contact_person_email else None
     work_order_link = f"{settings.frontend_url}/sign-work-order/{signature_token}"
 
+    # Set token expiry (72 hours from now)
+    token_expiry = datetime.now(timezone.utc) + timedelta(hours=72)
+
     if client_email:
         try:
             print(f"[DEBUG] Sending work order email to: {client_email}")
             email_sent = send_work_order_to_client(
                 client_email=client_email,
-                client_company_name=client.company_name,
-                work_order_number=work_order_number,
+                client_name=client.company_name,
                 contractor_name=f"{contractor.first_name} {contractor.surname}",
-                signature_link=work_order_link
+                work_order_token=signature_token,
+                expiry_date=token_expiry
             )
 
             if email_sent:
@@ -1449,15 +1468,18 @@ async def send_work_order_to_client_endpoint(
     client_email = client.contact_person_email if client.contact_person_email else None
     work_order_link = f"{settings.frontend_url}/sign-work-order/{signature_token}"
 
+    # Set token expiry (72 hours from now)
+    token_expiry = datetime.now(timezone.utc) + timedelta(hours=72)
+
     if client_email:
         try:
             print(f"[DEBUG] Sending work order email to: {client_email}")
             email_sent = send_work_order_to_client(
                 client_email=client_email,
-                client_company_name=client.company_name,
-                work_order_number=work_order_number,
+                client_name=client.company_name,
                 contractor_name=f"{contractor.first_name} {contractor.surname}",
-                signature_link=work_order_link
+                work_order_token=signature_token,
+                expiry_date=token_expiry
             )
 
             if email_sent:
@@ -1939,7 +1961,7 @@ async def cancel_contractor(
     db.commit()
     db.refresh(contractor)
 
-    return {"message": "Contractor request cancelled successfully", "contractor": contractor}
+    return {"message": "Contractor request cancelled successfully", "contractor_id": contractor.id, "status": contractor.status.value}
 
 
 # Superadmin Signature Management Endpoints
@@ -2696,7 +2718,10 @@ async def send_contract_to_contractor(
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
 ):
     """
-    Send contractor's contract for signature after work order is completed
+    Send contractor's contract for signature.
+
+    For WPS/Freelancer/Offshore routes: Can send after APPROVED status (Aventus generates contract)
+    For UAE/Saudi routes: Must be WORK_ORDER_COMPLETED (client uploads contract)
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -2706,12 +2731,24 @@ async def send_contract_to_contractor(
             detail="Contractor not found"
         )
 
-    # Check status - must be work_order_completed
-    if contractor.status != ContractorStatus.WORK_ORDER_COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Work order must be completed before sending contract. Current status: {contractor.status.value}"
-        )
+    # Routes where Aventus generates the contract (no work order needed)
+    aventus_contract_routes = [OnboardingRoute.WPS, OnboardingRoute.FREELANCER, OnboardingRoute.OFFSHORE]
+
+    # Check status based on route
+    if contractor.onboarding_route in aventus_contract_routes:
+        # WPS/Freelancer/Offshore: Can send after approval
+        if contractor.status != ContractorStatus.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Contractor must be approved before sending contract. Current status: {contractor.status.value}"
+            )
+    else:
+        # UAE/Saudi: Must have work order completed (client uploads contract)
+        if contractor.status != ContractorStatus.WORK_ORDER_COMPLETED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Work order must be completed before sending contract. Current status: {contractor.status.value}"
+            )
 
     # Generate contract token
     contract_token = generate_unique_token()
