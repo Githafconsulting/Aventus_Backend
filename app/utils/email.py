@@ -11,9 +11,6 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.config import settings
 
-# Initialize Resend
-resend.api_key = settings.resend_api_key
-
 # Initialize Jinja2 template engine
 _template_dir = Path(__file__).parent.parent / "templates"
 _env = Environment(
@@ -40,18 +37,33 @@ def _render_template(template_name: str, **context) -> str:
 
 def _send_email(to: str, subject: str, html: str) -> bool:
     """Send email via Resend."""
+    import os
+    from dotenv import load_dotenv
+
+    # Force reload environment variables
+    load_dotenv(override=True)
+
+    api_key = os.getenv("RESEND_API_KEY")
+    from_email = os.getenv("FROM_EMAIL")
+
+    if not api_key:
+        print("[EMAIL] ERROR: RESEND_API_KEY not set")
+        return False
+
     try:
+        resend.api_key = api_key
+
         params = {
-            "from": settings.from_email,
+            "from": from_email,
             "to": [to] if isinstance(to, str) else to,
             "subject": subject,
             "html": html,
         }
+
         resend.Emails.send(params)
-        print(f"Email sent to {to}: {subject}")
         return True
     except Exception as e:
-        print(f"Failed to send email to {to}: {str(e)}")
+        print(f"[EMAIL] ERROR: {str(e)}")
         return False
 
 
@@ -244,7 +256,7 @@ def send_work_order_to_client(
         "work_order_client",
         client_name=client_name,
         contractor_name=contractor_name,
-        signing_link=f"{settings.frontend_url}/work-order/sign/{work_order_token}",
+        signing_link=f"{settings.frontend_url}/sign-work-order/{work_order_token}",
         expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
     )
     return _send_email(client_email, f"Work Order Signature Required - {contractor_name}", html)
@@ -310,9 +322,13 @@ def send_timesheet_to_manager(
     manager_email: str,
     manager_name: str,
     contractor_name: str,
-    timesheet_id: int,
-    period: Optional[str] = None,
-    total_hours: Optional[str] = None,
+    timesheet_month: str,
+    review_link: str,
+    total_days: float = 0,
+    work_days: int = 0,
+    sick_days: int = 0,
+    vacation_days: int = 0,
+    pdf_content: Optional[bytes] = None,
     client_name: Optional[str] = None
 ) -> bool:
     """Send timesheet notification to manager for approval."""
@@ -320,12 +336,15 @@ def send_timesheet_to_manager(
         "timesheet",
         manager_name=manager_name,
         contractor_name=contractor_name,
-        timesheet_link=f"{settings.frontend_url}/timesheets/{timesheet_id}",
-        period=period,
-        total_hours=total_hours,
+        timesheet_link=review_link,
+        period=timesheet_month,
+        total_days=total_days,
+        work_days=work_days,
+        sick_days=sick_days,
+        vacation_days=vacation_days,
         client_name=client_name,
     )
-    return _send_email(manager_email, f"Timesheet Submitted - {contractor_name}", html)
+    return _send_email(manager_email, f"Timesheet Submitted - {contractor_name} ({timesheet_month})", html)
 
 
 def send_uploaded_timesheet_to_manager(

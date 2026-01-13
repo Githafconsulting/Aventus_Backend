@@ -72,7 +72,8 @@ class CostingSheetData(BaseModel):
     fx: Optional[str] = None
     nationalisation: Optional[str] = None
 
-    # Provisions
+    # Provisions & Leave
+    leave_allowance: Optional[str] = None  # Annual leave days
     eosb: Optional[str] = None
     vacation_days: Optional[str] = None
     vacation_pay: Optional[str] = None
@@ -486,7 +487,8 @@ class ContractorDetailResponse(BaseModel):
     fx: Optional[str] = None
     nationalisation: Optional[str] = None
 
-    # Provisions
+    # Provisions & Leave
+    leave_allowance: Optional[str] = None  # Annual leave days
     eosb: Optional[str] = None
     vacation_days: Optional[str] = None
     vacation_pay: Optional[str] = None

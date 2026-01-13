@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -12,6 +12,11 @@ class PayrollStatus(str, enum.Enum):
     PAID = "paid"
 
 
+class RateType(str, enum.Enum):
+    MONTHLY = "monthly"
+    DAILY = "daily"
+
+
 class Payroll(Base):
     __tablename__ = "payrolls"
 
@@ -19,23 +24,69 @@ class Payroll(Base):
     timesheet_id = Column(Integer, ForeignKey("timesheets.id"), unique=True, nullable=False)
     contractor_id = Column(String, ForeignKey("contractors.id"), nullable=False)
 
-    # Pay calculation
-    day_rate = Column(Float, nullable=False)  # Rate per day at calculation time
-    work_days = Column(Float, nullable=False)  # Days worked
-    gross_amount = Column(Float, nullable=False)  # day_rate * work_days
-    deductions = Column(Float, default=0)
-    net_amount = Column(Float, nullable=False)  # gross - deductions
-    currency = Column(String(10), default="USD")
+    # Basic Info
+    period = Column(String, nullable=True)  # e.g., "November 2024"
+    client_name = Column(String, nullable=True)
+    third_party_name = Column(String, nullable=True)  # e.g., FNRCO, Auxillium
+    currency = Column(String(10), default="AED")
+    rate_type = Column(SQLEnum(RateType), default=RateType.MONTHLY)
+    country = Column(String, nullable=True)  # For VAT calculation (UAE=5%, Saudi=15%)
 
-    # Invoice fields (for client billing)
-    charge_rate_day = Column(Float, nullable=True)  # Client charge rate
-    invoice_amount = Column(Float, nullable=True)  # charge_rate * work_days
+    # Basic Calculation - Monthly Rate
+    monthly_rate = Column(Float, nullable=True)  # From CDS
+    total_calendar_days = Column(Integer, nullable=True)  # Total days in month
+    days_worked = Column(Float, nullable=True)  # From timesheet or default to calendar days
+    prorata_day_rate = Column(Float, nullable=True)  # Monthly rate / total calendar days
+    gross_pay = Column(Float, nullable=True)  # Monthly rate or (days worked x day rate)
+
+    # Basic Calculation - Day Rate
+    day_rate = Column(Float, nullable=True)  # From CDS
+
+    # Leave Adjustments
+    leave_allowance = Column(Float, default=0)  # From CDS (annual leave days)
+    carry_over_leave = Column(Float, default=0)  # From previous year (max 5)
+    total_leave_allowance = Column(Float, default=0)  # leave_allowance + carry_over
+    total_leave_taken = Column(Float, default=0)  # Sum from timesheets this year
+    leave_balance = Column(Float, default=0)  # total_leave_allowance - total_leave_taken
+    previous_month_days_worked = Column(Float, nullable=True)  # For reference
+    leave_deductibles = Column(Float, default=0)  # Deduction if negative leave balance
+
+    # Expenses
+    expenses_reimbursement = Column(Float, default=0)  # From expenses form
+
+    # Net Salary
+    net_salary = Column(Float, nullable=True)  # Final net salary calculation
+
+    # 3rd Party Accruals (stored as JSON for flexibility)
+    accruals = Column(JSON, nullable=True)  # {"gosi": 900, "salary_transfer": 8.33, ...}
+    total_accruals = Column(Float, default=0)  # Sum of all accruals
+
+    # Individual accrual fields (for common ones)
+    accrual_gosi = Column(Float, default=0)
+    accrual_salary_transfer = Column(Float, default=0)
+    accrual_admin_costs = Column(Float, default=0)
+    accrual_gratuity = Column(Float, default=0)
+    accrual_airfare = Column(Float, default=0)
+    accrual_annual_leave = Column(Float, default=0)
+    accrual_other = Column(Float, default=0)
+
+    # Management Fee
+    management_fee = Column(Float, default=0)  # From CDS - Management company charges
+
+    # Invoice Calculation
+    invoice_total = Column(Float, nullable=True)  # Net salary + accruals + management fee
+    vat_rate = Column(Float, default=0.05)  # 5% UAE, 15% Saudi
+    vat_amount = Column(Float, default=0)  # Invoice total x VAT rate
+    total_payable = Column(Float, nullable=True)  # Invoice total + VAT
+
+    # Legacy fields for backward compatibility
+    deductions = Column(Float, default=0)
+    net_amount = Column(Float, nullable=True)
+    charge_rate_day = Column(Float, nullable=True)
+    invoice_amount = Column(Float, nullable=True)
 
     # Status workflow: PENDING -> CALCULATED -> APPROVED -> PAID
     status = Column(SQLEnum(PayrollStatus), default=PayrollStatus.CALCULATED)
-
-    # Period info (cached from timesheet)
-    period = Column(String, nullable=True)  # e.g., "November 2024"
 
     # Timestamps
     calculated_at = Column(DateTime, default=datetime.utcnow)

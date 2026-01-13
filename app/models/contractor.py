@@ -221,7 +221,8 @@ class Contractor(Base):
     fx = Column(String, nullable=True)
     nationalisation = Column(String, nullable=True)
 
-    # Provisions
+    # Provisions & Leave
+    leave_allowance = Column(String, nullable=True)  # Annual leave days (e.g., 30)
     eosb = Column(String, nullable=True)
     vacation_days = Column(String, nullable=True)
     vacation_pay = Column(String, nullable=True)
