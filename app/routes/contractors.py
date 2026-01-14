@@ -3814,6 +3814,91 @@ async def sign_cohf(
 # ============================================# AVENTUS COUNTER-SIGNATURE ENDPOINTS FOR COHF# ============================================@router.get("/{contractor_id}/cohf/view-signed")async def view_signed_cohf(    contractor_id: str,    db: Session = Depends(get_db),    current_user: User = Depends(require_role(["admin", "superadmin", "consultant"]))):    """    View COHF that has been signed by third party, pending Aventus counter-signature.    """    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()    if not contractor:        raise HTTPException(            status_code=status.HTTP_404_NOT_FOUND,            detail="Contractor not found"        )    if contractor.cohf_status != "signed":        raise HTTPException(            status_code=status.HTTP_400_BAD_REQUEST,            detail=f"COHF has not been signed by third party yet. Current status: {contractor.cohf_status}"        )    return {        "contractor_id": contractor_id,        "contractor_name": f"{contractor.first_name} {contractor.surname}",        "cohf_data": contractor.cohf_data,        "third_party_signature": {            "name": contractor.cohf_third_party_name,            "signature": contractor.cohf_third_party_signature,            "signed_date": contractor.cohf_completed_date.isoformat() if contractor.cohf_completed_date else None        },        "cohf_signed_document": contractor.cohf_signed_document,        "ready_for_counter_signature": not contractor.cohf_aventus_signed_date    }@router.post("/{contractor_id}/cohf/counter-sign")async def counter_sign_cohf(    contractor_id: str,    signature_data: dict,    db: Session = Depends(get_db),    current_user: User = Depends(require_role(["admin", "superadmin"]))):    """    Aventus admin counter-signs COHF after third party has signed it.    """    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()    if not contractor:        raise HTTPException(            status_code=status.HTTP_404_NOT_FOUND,            detail="Contractor not found"        )    if contractor.cohf_status != "signed":        raise HTTPException(            status_code=status.HTTP_400_BAD_REQUEST,            detail="COHF must be signed by third party before counter-signing"        )    if contractor.cohf_aventus_signed_date:        raise HTTPException(            status_code=status.HTTP_400_BAD_REQUEST,            detail="COHF has already been counter-signed by Aventus"        )    contractor.cohf_aventus_signature_type = signature_data.get("signature_type", "typed")    contractor.cohf_aventus_signature_data = signature_data.get("signature_data")    contractor.cohf_aventus_signed_date = datetime.now(timezone.utc)    contractor.cohf_aventus_signed_by = current_user.id    db.commit()    db.refresh(contractor)    return {        "message": "COHF counter-signed successfully by Aventus",        "contractor_id": contractor_id,        "aventus_signed_by": current_user.name,        "aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat()    }
 
 # ============================================
+# AVENTUS COUNTER-SIGNATURE ENDPOINTS FOR QUOTE SHEETS (SAUDI ROUTE)
+# ============================================
+
+@router.get("/{contractor_id}/quote-sheet/view-signed")
+async def view_signed_quote_sheet(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin", "consultant"]))
+):
+    """
+    View Quote Sheet that has been signed by third party, pending Aventus counter-signature.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if not contractor.quote_sheet_third_party_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quote sheet has not been signed by third party yet"
+        )
+
+    return {
+        "contractor_id": contractor_id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "costing_sheet_data": contractor.costing_sheet_data,
+        "third_party_signature": {
+            "name": contractor.quote_sheet_third_party_name,
+            "signature": contractor.quote_sheet_third_party_signature,
+            "signed_date": contractor.quote_sheet_third_party_signed_date.isoformat() if contractor.quote_sheet_third_party_signed_date else None
+        },
+        "third_party_document": contractor.third_party_document,
+        "ready_for_counter_signature": not contractor.quote_sheet_aventus_signed_date
+    }
+
+
+@router.post("/{contractor_id}/quote-sheet/counter-sign")
+async def counter_sign_quote_sheet(
+    contractor_id: str,
+    signature_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """
+    Aventus admin counter-signs Quote Sheet after third party has signed it.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if not contractor.quote_sheet_third_party_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quote sheet must be signed by third party before counter-signing"
+        )
+
+    if contractor.quote_sheet_aventus_signed_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quote sheet has already been counter-signed by Aventus"
+        )
+
+    contractor.quote_sheet_aventus_signature_type = signature_data.get("signature_type", "typed")
+    contractor.quote_sheet_aventus_signature_data = signature_data.get("signature_data")
+    contractor.quote_sheet_aventus_signed_date = datetime.now(timezone.utc)
+    contractor.quote_sheet_aventus_signed_by = current_user.id
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": "Quote sheet counter-signed successfully by Aventus",
+        "contractor_id": contractor_id,
+        "aventus_signed_by": current_user.name,
+        "aventus_signed_date": contractor.quote_sheet_aventus_signed_date.isoformat()
+    }
+
+
+# ============================================
 # UAE 3rd Party Contract Upload Endpoints
 # ============================================
 
