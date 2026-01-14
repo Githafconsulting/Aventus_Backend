@@ -7,6 +7,7 @@ from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
 import os
+import base64
 
 
 def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
@@ -220,35 +221,93 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
         spaceAfter=4
     )
 
-    # Two-column signature layout
-    # Left column - Aventus
-    aventus_col = [
-        Paragraph("<b>FOR AVENTUS CONTRACTOR MANAGEMENT:</b>", sig_header_style),
-        Spacer(1, 2*mm),
-        Paragraph("Signed: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Name: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Position: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Date: _____________________________", body_style),
-    ]
+    signature_style = ParagraphStyle(
+        'Signature',
+        parent=body_style,
+        fontSize=16,
+        fontName='Helvetica-Oblique',
+        textColor=colors.blue,
+        alignment=TA_LEFT
+    )
 
-    # Right column - Contractor
-    contractor_col = [
-        Paragraph(f"<b>CONTRACTOR ACKNOWLEDGMENT:</b>", sig_header_style),
-        Spacer(1, 2*mm),
-        Paragraph("Signed: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Name: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Position: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph("Date: _____________________________", body_style),
-    ]
+    # Get signature data
+    client_signature_type = work_order_data.get('client_signature_type')
+    client_signature_data = work_order_data.get('client_signature_data')
+    client_signed_date = work_order_data.get('client_signed_date')
+
+    aventus_signature_type = work_order_data.get('aventus_signature_type')
+    aventus_signature_data = work_order_data.get('aventus_signature_data')
+    aventus_signed_date = work_order_data.get('aventus_signed_date')
+
+    # Two-column signature layout
+    # Left column - Client
+    client_col = [Paragraph(f"<b>FOR {client_name.upper()}:</b>", sig_header_style), Spacer(1, 2*mm)]
+
+    if client_signature_data:
+        if client_signature_type == "drawn":
+            # Display drawn signature as image
+            try:
+                # Remove data:image/png;base64, prefix if present
+                if client_signature_data.startswith('data:image'):
+                    client_signature_data = client_signature_data.split(',')[1]
+                sig_image_data = base64.b64decode(client_signature_data)
+                sig_buffer = BytesIO(sig_image_data)
+                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+                client_col.append(sig_image)
+            except Exception as e:
+                client_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
+        else:
+            # Display typed signature
+            client_col.append(Paragraph(f"<i>{client_signature_data}</i>", signature_style))
+
+        client_col.extend([
+            Spacer(1, 1*mm),
+            Paragraph(f"Date: {client_signed_date[:10] if client_signed_date else 'N/A'}", body_style),
+        ])
+    else:
+        client_col.extend([
+            Paragraph("Signed: _____________________________", body_style),
+            Spacer(1, 1*mm),
+            Paragraph("Name: _____________________________", body_style),
+            Spacer(1, 1*mm),
+            Paragraph("Date: _____________________________", body_style),
+        ])
+
+    # Right column - Aventus
+    aventus_col = [Paragraph("<b>FOR AVENTUS CONTRACTOR MANAGEMENT:</b>", sig_header_style), Spacer(1, 2*mm)]
+
+    if aventus_signature_data:
+        if aventus_signature_type == "drawn":
+            # Display drawn signature as image
+            try:
+                # Remove data:image/png;base64, prefix if present
+                if aventus_signature_data.startswith('data:image'):
+                    aventus_signature_data = aventus_signature_data.split(',')[1]
+                sig_image_data = base64.b64decode(aventus_signature_data)
+                sig_buffer = BytesIO(sig_image_data)
+                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+                aventus_col.append(sig_image)
+            except Exception as e:
+                aventus_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
+        else:
+            # Display typed signature
+            aventus_col.append(Paragraph(f"<i>{aventus_signature_data}</i>", signature_style))
+
+        aventus_col.extend([
+            Spacer(1, 1*mm),
+            Paragraph(f"Date: {aventus_signed_date[:10] if aventus_signed_date else 'N/A'}", body_style),
+        ])
+    else:
+        aventus_col.extend([
+            Paragraph("Signed: _____________________________", body_style),
+            Spacer(1, 1*mm),
+            Paragraph("Name: _____________________________", body_style),
+            Spacer(1, 1*mm),
+            Paragraph("Date: _____________________________", body_style),
+        ])
 
     # Create side-by-side table
-    signature_table = Table([[aventus_col, contractor_col]], colWidths=[75*mm, 75*mm])
+    signature_table = Table([[client_col, aventus_col]], colWidths=[75*mm, 75*mm])
     signature_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 2),

@@ -535,6 +535,13 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     signature_date = get_val('signature_date', '')
     signature_type = get_val('third_party_signature_type', 'typed')
 
+    # Check if Aventus admin has counter-signed
+    aventus_signature_type = contractor_data.get('cohf_aventus_signature_type', '')
+    aventus_signature_data = contractor_data.get('cohf_aventus_signature_data', '')
+    aventus_signed_date = contractor_data.get('cohf_aventus_signed_date', '')
+    if aventus_signed_date and isinstance(aventus_signed_date, str):
+        aventus_signed_date = aventus_signed_date[:10] if len(aventus_signed_date) >= 10 else aventus_signed_date
+
     # Build third party signature block
     def build_signature_block(sig_data=None, sig_name='', sig_date='', sig_type='typed'):
         if sig_name and sig_data:
@@ -608,18 +615,18 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
     client_company_name = get_val('company_name', get_val('client_name', 'Client Company'))
 
     sig_row_2 = [
-        # Aventus Signatory 1
+        # Aventus Signatory 1 - Counter-signature
         [
-            Paragraph(f"Signed by {signatory_name_aventus} duly authorised", sig_text_style),
+            Paragraph(f"Signed by Aventus Admin duly authorised", sig_text_style),
             Paragraph("for and on behalf of", sig_text_style),
             Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
-            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
+            build_signature_block(aventus_signature_data, 'Aventus Admin', aventus_signed_date, aventus_signature_type) if aventus_signature_data else Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
         ],
-        # Aventus Signatory 2 / Client Signatory
+        # Aventus Signatory 2 / Third Party Signatory
         [
-            Paragraph(f"Signed by {signatory_name_aventus} duly authorised", sig_text_style),
+            Paragraph(f"Signed by Third Party duly authorised", sig_text_style),
             Paragraph("for and on behalf of", sig_text_style),
-            Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
+            Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
             build_signature_block(third_party_signature, third_party_signer, signature_date, signature_type),
         ],
     ]

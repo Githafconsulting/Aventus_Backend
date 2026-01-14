@@ -2,10 +2,11 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
+import base64
 
 
 def format_currency(value, default=""):
@@ -513,6 +514,111 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(grand_total_table)
+
+    # ============== SIGNATURES SECTION ==============
+    elements.append(Spacer(1, 8*mm))
+
+    sig_header_style = ParagraphStyle(
+        'SigHeader',
+        parent=cell_bold_style,
+        fontSize=11,
+        spaceAfter=4
+    )
+
+    signature_style = ParagraphStyle(
+        'Signature',
+        parent=cell_style,
+        fontSize=16,
+        fontName='Helvetica-Oblique',
+        textColor=colors.blue,
+        alignment=TA_LEFT
+    )
+
+    # Get signature data
+    third_party_signature = get_val('quote_sheet_third_party_signature')
+    third_party_name = get_val('quote_sheet_third_party_name')
+    third_party_signed_date = get_val('quote_sheet_third_party_signed_date')
+
+    aventus_signature_type = get_val('quote_sheet_aventus_signature_type')
+    aventus_signature_data = get_val('quote_sheet_aventus_signature_data')
+    aventus_signed_date = get_val('quote_sheet_aventus_signed_date')
+
+    # Two-column signature layout
+    # Left column - Third Party
+    third_party_col = [Paragraph("<b>FOR THIRD PARTY:</b>", sig_header_style), Spacer(1, 2*mm)]
+
+    if third_party_signature:
+        # Display signature (always drawn for third party)
+        try:
+            # Remove data:image/png;base64, prefix if present
+            if third_party_signature.startswith('data:image'):
+                third_party_signature = third_party_signature.split(',')[1]
+            sig_image_data = base64.b64decode(third_party_signature)
+            sig_buffer = BytesIO(sig_image_data)
+            sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+            third_party_col.append(sig_image)
+        except Exception as e:
+            third_party_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
+
+        third_party_col.extend([
+            Spacer(1, 1*mm),
+            Paragraph(f"Name: {third_party_name or 'N/A'}", cell_style),
+            Spacer(1, 1*mm),
+            Paragraph(f"Date: {third_party_signed_date[:10] if third_party_signed_date else 'N/A'}", cell_style),
+        ])
+    else:
+        third_party_col.extend([
+            Paragraph("Signed: _____________________________", cell_style),
+            Spacer(1, 1*mm),
+            Paragraph("Name: _____________________________", cell_style),
+            Spacer(1, 1*mm),
+            Paragraph("Date: _____________________________", cell_style),
+        ])
+
+    # Right column - Aventus
+    aventus_col = [Paragraph("<b>FOR AVENTUS:</b>", sig_header_style), Spacer(1, 2*mm)]
+
+    if aventus_signature_data:
+        if aventus_signature_type == "drawn":
+            # Display drawn signature as image
+            try:
+                # Remove data:image/png;base64, prefix if present
+                if aventus_signature_data.startswith('data:image'):
+                    aventus_signature_data = aventus_signature_data.split(',')[1]
+                sig_image_data = base64.b64decode(aventus_signature_data)
+                sig_buffer = BytesIO(sig_image_data)
+                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+                aventus_col.append(sig_image)
+            except Exception as e:
+                aventus_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
+        else:
+            # Display typed signature
+            aventus_col.append(Paragraph(f"<i>{aventus_signature_data}</i>", signature_style))
+
+        aventus_col.extend([
+            Spacer(1, 1*mm),
+            Paragraph(f"Date: {aventus_signed_date[:10] if aventus_signed_date else 'N/A'}", cell_style),
+        ])
+    else:
+        aventus_col.extend([
+            Paragraph("Signed: _____________________________", cell_style),
+            Spacer(1, 1*mm),
+            Paragraph("Name: _____________________________", cell_style),
+            Spacer(1, 1*mm),
+            Paragraph("Date: _____________________________", cell_style),
+        ])
+
+    # Create side-by-side table
+    signature_table = Table([[third_party_col, aventus_col]], colWidths=[85*mm, 85*mm])
+    signature_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(signature_table)
 
     # Build PDF
     doc.build(elements)
