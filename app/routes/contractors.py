@@ -1009,12 +1009,14 @@ async def submit_costing_sheet(
         )
 
     # Check if contractor is ready for costing sheet submission
-    # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, CDS_CS_COMPLETED, COHF_COMPLETED (UAE route), PENDING_REVIEW (editing)
+    # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, CDS_CS_COMPLETED, COHF_COMPLETED (UAE route), PENDING_COHF (COHF in progress), PENDING_REVIEW (editing)
     valid_statuses = [
         ContractorStatus.DOCUMENTS_UPLOADED,
         ContractorStatus.PENDING_CDS_CS,
         ContractorStatus.CDS_CS_COMPLETED,
         ContractorStatus.COHF_COMPLETED,  # UAE route after COHF is done
+        ContractorStatus.PENDING_COHF,  # UAE route - COHF filled but not signed
+        ContractorStatus.AWAITING_COHF_SIGNATURE,  # UAE route - sent to third party
         ContractorStatus.PENDING_REVIEW,  # Allow re-submission after rejection
     ]
     if contractor.status not in valid_statuses:
