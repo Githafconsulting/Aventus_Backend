@@ -52,7 +52,7 @@ from app.utils.work_order_pdf_generator import generate_work_order_pdf
 from app.utils.cohf_pdf_generator import generate_cohf_pdf
 from app.utils.storage import upload_file
 from app.config import settings
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 
 router = APIRouter(prefix="/contractors", tags=["Contractors"])
 
@@ -67,16 +67,9 @@ async def create_contractor_initial(
     NEW Step 1: Consultant creates initial contractor entry (name, email, phone)
     and sends document upload link to contractor
     """
-    print("=" * 60)
-    print("[ENDPOINT] /contractors/initial HIT!")
-    print(f"[ENDPOINT] Data received: {contractor_data}")
-    print(f"[ENDPOINT] User: {current_user.email} (role: {current_user.role})")
-    print("=" * 60)
-
     # Check if contractor email already exists
     existing = db.query(Contractor).filter(Contractor.email == contractor_data.email).first()
     if existing:
-        print(f"[ENDPOINT] ERROR: Contractor with email {contractor_data.email} already exists")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contractor with this email already exists"
@@ -115,31 +108,16 @@ async def create_contractor_initial(
     # Send document upload email to contractor
     contractor_name = f"{contractor.first_name} {contractor.surname}"
 
-    print(f"[ENDPOINT] Contractor created: {contractor.id}")
-    print(f"[ENDPOINT] Now sending email to: {contractor.email}")
-    print(f"[ENDPOINT] Token: {document_token}")
-
     try:
-        print(f"[ENDPOINT] Calling send_document_upload_email()...")
         email_sent = send_document_upload_email(
             contractor_email=contractor.email,
             contractor_name=contractor_name,
             upload_token=document_token,
             expiry_date=token_expiry
         )
-        print(f"[ENDPOINT] send_document_upload_email returned: {email_sent}")
-
-        if email_sent:
-            print(f"[SUCCESS] Document upload email sent to {contractor.email}")
-        else:
-            print(f"[WARNING] Failed to send document upload email to {contractor.email}")
     except Exception as e:
-        print(f"[ERROR] Exception sending document upload email: {str(e)}")
-        import traceback
-        traceback.print_exc()
-
-    print(f"[INFO] Document upload URL: {settings.frontend_url}/documents/upload/{document_token}")
-    print("=" * 60)
+        # Log error but don't fail the request
+        pass
 
     return contractor
 
@@ -528,8 +506,6 @@ async def upload_documents(
         db.refresh(contractor)
 
         # Send notification email to consultant
-        print(f"[INFO] Documents uploaded for contractor {contractor.email}")
-
         # Get consultant info to send notification
         if contractor.consultant_id:
             consultant = db.query(User).filter(User.id == contractor.consultant_id).first()
@@ -541,9 +517,8 @@ async def upload_documents(
                         contractor_name=f"{contractor.first_name} {contractor.surname}",
                         contractor_id=contractor.id
                     )
-                    print(f"[SUCCESS] Notification sent to consultant {consultant.email}")
                 except Exception as e:
-                    print(f"[ERROR] Failed to send consultant notification: {str(e)}")
+                    pass  # Silent fail on notification
 
         return {
             "message": "Documents uploaded successfully",
@@ -558,6 +533,115 @@ async def upload_documents(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload documents: {str(e)}"
         )
+
+
+@router.get("/{contractor_id}/cds-form")
+async def get_cds_form(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Get CDS form data with auto-prefill from COHF if available (UAE route).
+    Returns existing CDS data if already filled, or COHF data mapped to CDS fields.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Start with existing CDS data if available
+    cds_data = contractor.cds_form_data or {}
+
+    # If UAE route and COHF is completed, prefill from COHF
+    if (contractor.onboarding_route == OnboardingRoute.UAE and
+        contractor.cohf_status == "signed" and
+        contractor.cohf_data):
+
+        cohf = contractor.cohf_data
+
+        # Map COHF fields to CDS fields (only if not already in CDS)
+        # Personal Information
+        if not cds_data.get('firstName') and cohf.get('first_name'):
+            cds_data['firstName'] = cohf.get('first_name')
+        if not cds_data.get('lastName') and cohf.get('surname'):
+            cds_data['lastName'] = cohf.get('surname')
+        if not cds_data.get('title') and cohf.get('title'):
+            cds_data['title'] = cohf.get('title')
+        if not cds_data.get('nationality') and cohf.get('nationality'):
+            cds_data['nationality'] = cohf.get('nationality')
+        if not cds_data.get('dob'):
+            cds_data['dob'] = cohf.get('date_of_birth') or cohf.get('dob')
+        if not cds_data.get('maritalStatus') and cohf.get('marital_status'):
+            cds_data['maritalStatus'] = cohf.get('marital_status')
+        if not cds_data.get('mobileNo'):
+            cds_data['mobileNo'] = cohf.get('mobile') or cohf.get('phone')
+        if not cds_data.get('email') and cohf.get('email'):
+            cds_data['email'] = cohf.get('email')
+        if not cds_data.get('addressLine1'):
+            cds_data['addressLine1'] = cohf.get('address') or cohf.get('home_address')
+        if not cds_data.get('currentLocation') and cohf.get('current_location'):
+            cds_data['currentLocation'] = cohf.get('current_location')
+        if not cds_data.get('visaStatus') and cohf.get('visa_status'):
+            cds_data['visaStatus'] = cohf.get('visa_status')
+
+        # Remuneration Information
+        if not cds_data.get('grossSalary') and cohf.get('gross_salary'):
+            cds_data['grossSalary'] = cohf.get('gross_salary')
+        if not cds_data.get('basicSalaryMonthly'):
+            cds_data['basicSalaryMonthly'] = cohf.get('basic_salary') or cohf.get('basic_salary_monthly')
+        if not cds_data.get('housingMonthly'):
+            cds_data['housingMonthly'] = cohf.get('housing_allowance') or cohf.get('housing_monthly')
+        if not cds_data.get('transportMonthly'):
+            cds_data['transportMonthly'] = cohf.get('transport_allowance') or cohf.get('transport_monthly')
+        if not cds_data.get('leaveAllowance') and cohf.get('leave_allowance'):
+            cds_data['leaveAllowance'] = cohf.get('leave_allowance')
+        if not cds_data.get('medicalInsuranceCategory') and cohf.get('medical_insurance_category'):
+            cds_data['medicalInsuranceCategory'] = cohf.get('medical_insurance_category')
+        if not cds_data.get('medical'):
+            cds_data['medical'] = cohf.get('medical_insurance_cost') or cohf.get('medical')
+        if not cds_data.get('managementFee') and cohf.get('management_fee'):
+            cds_data['managementFee'] = cohf.get('management_fee')
+
+        # Deployment Information
+        if not cds_data.get('visaType') and cohf.get('visa_type'):
+            cds_data['visaType'] = cohf.get('visa_type')
+        if not cds_data.get('jobTitle'):
+            cds_data['jobTitle'] = cohf.get('job_title') or cohf.get('role')
+        if not cds_data.get('companyName'):
+            cds_data['companyName'] = cohf.get('company_name') or cohf.get('client_name')
+        if not cds_data.get('workLocation') and cohf.get('work_location'):
+            cds_data['workLocation'] = cohf.get('work_location')
+        if not cds_data.get('startDate'):
+            cds_data['startDate'] = cohf.get('expected_start_date') or cohf.get('start_date')
+        if not cds_data.get('duration'):
+            cds_data['duration'] = cohf.get('expected_tenure') or cohf.get('duration')
+        if not cds_data.get('probationPeriod') and cohf.get('probation_period'):
+            cds_data['probationPeriod'] = cohf.get('probation_period')
+        if not cds_data.get('noticePeriod') and cohf.get('notice_period'):
+            cds_data['noticePeriod'] = cohf.get('notice_period')
+        if not cds_data.get('annualLeaveType') and cohf.get('annual_leave_type'):
+            cds_data['annualLeaveType'] = cohf.get('annual_leave_type')
+        if not cds_data.get('annualLeaveDays') and cohf.get('annual_leave_days'):
+            cds_data['annualLeaveDays'] = cohf.get('annual_leave_days')
+        if not cds_data.get('weeklyWorkingDays') and cohf.get('weekly_working_days'):
+            cds_data['weeklyWorkingDays'] = cohf.get('weekly_working_days')
+        if not cds_data.get('weekendDays') and cohf.get('weekend_days'):
+            cds_data['weekendDays'] = cohf.get('weekend_days')
+        if not cds_data.get('chargeableRate') and cohf.get('chargeable_rate'):
+            cds_data['chargeableRate'] = cohf.get('chargeable_rate')
+
+    return {
+        "contractor_id": contractor_id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "cds_data": cds_data,
+        "onboarding_route": contractor.onboarding_route.value if contractor.onboarding_route else None,
+        "status": contractor.status.value,
+        "prefilled_from_cohf": bool(contractor.onboarding_route == OnboardingRoute.UAE and contractor.cohf_data and contractor.cohf_status == "signed")
+    }
 
 
 @router.put("/{contractor_id}/cds-form")
@@ -895,8 +979,6 @@ async def submit_cds_form(
     db.commit()
     db.refresh(contractor)
 
-    print(f"[INFO] CDS form saved for contractor {contractor.email}")
-
     return {
         "message": "CDS form saved successfully",
         "contractor_id": contractor.id,
@@ -963,8 +1045,6 @@ async def submit_costing_sheet(
     db.refresh(contractor)
 
     # Send notification email to admin/superadmin
-    print(f"[INFO] Costing sheet submitted for contractor {contractor.email}")
-
     # Get all admin and superadmin emails to notify
     admins = db.query(User).filter(
         User.role.in_([UserRole.ADMIN, UserRole.SUPERADMIN]),
@@ -983,9 +1063,8 @@ async def submit_costing_sheet(
                 consultant_name=consultant_name,
                 contractor_id=contractor.id
             )
-            print(f"[SUCCESS] Review notification sent to {len(admin_emails)} admins")
         except Exception as e:
-            print(f"[ERROR] Failed to send review notification: {str(e)}")
+            pass  # Silent fail on notification
 
     return {
         "message": "Costing sheet submitted successfully",
@@ -1358,10 +1437,7 @@ async def approve_contractor_work_order(
                 expiry_date=token_expiry
             )
 
-            if email_sent:
-                print(f"[SUCCESS] Work order email sent to {client_email}")
-            else:
-                print(f"[WARNING] Failed to send work order email to {client_email}")
+            # Email sent silently
         except Exception as e:
             print(f"[ERROR] Exception sending work order email: {str(e)}")
     else:
@@ -1482,10 +1558,7 @@ async def send_work_order_to_client_endpoint(
                 expiry_date=token_expiry
             )
 
-            if email_sent:
-                print(f"[SUCCESS] Work order email sent to {client_email}")
-            else:
-                print(f"[WARNING] Failed to send work order email to {client_email}")
+            # Email sent silently
         except Exception as e:
             print(f"[ERROR] Exception sending work order email: {str(e)}")
     else:
@@ -1533,8 +1606,6 @@ async def forward_work_order_to_superadmin(
     db.refresh(contractor)
 
     # TODO: Send notification to superadmin
-    print(f"[INFO] Work order for contractor {contractor_id} forwarded to superadmin for approval")
-
     return {
         "message": "Work order forwarded to superadmin - awaiting contract upload request",
         "contractor_id": contractor.id,
@@ -1596,10 +1667,6 @@ async def request_contract_upload_from_client(
     client_email = client.contact_person_email if client.contact_person_email else None
 
     # TODO: Create and send email function
-    print(f"[INFO] Contract upload request sent to client {client.company_name}")
-    print(f"[INFO] Upload link: {upload_link}")
-    print(f"[INFO] Email should be sent to: {client_email}")
-
     return {
         "message": "Contract upload request sent to client",
         "contractor_id": contractor.id,
@@ -1781,14 +1848,10 @@ async def sign_contract(
         if superadmin.signature_type and superadmin.signature_data:
             contractor.superadmin_signature_type = superadmin.signature_type
             contractor.superadmin_signature_data = superadmin.signature_data
-            print(f"[INFO] Added stored superadmin signature")
         else:
             # Fallback to typed name if no signature is set
             contractor.superadmin_signature_type = "typed"
             contractor.superadmin_signature_data = superadmin.name
-            print(f"[INFO] Added default superadmin signature: {superadmin.name}")
-    else:
-        print(f"[WARNING] No superadmin found to add signature")
 
     contractor.status = ContractorStatus.SIGNED
 
@@ -2505,12 +2568,9 @@ async def send_third_party_request(
             upload_url=upload_url
         )
 
-        if not email_sent:
-            print(f"[WARNING] Failed to send email to {third_party.contact_person_email}")
-        else:
-            print(f"[SUCCESS] Third party request email sent to {third_party.contact_person_email}")
+        # Email sent silently
     except Exception as e:
-        print(f"[ERROR] Exception sending email: {str(e)}")
+        pass  # Silent fail on email
 
     db.commit()
     db.refresh(contractor)
@@ -2697,10 +2757,6 @@ async def approve_uploaded_contract(
     contract_link = f"{settings.frontend_url}/sign-contract/{contract_token}"
 
     # TODO: Send email to contractor with contract signing link
-    print(f"[INFO] Contract approved for contractor {contractor_id}")
-    print(f"[INFO] Contract signature link: {contract_link}")
-    print(f"[INFO] Email should be sent to: {contractor.email}")
-
     return {
         "message": "Contract approved and sent to contractor for signature",
         "contractor_id": contractor.id,
@@ -2887,9 +2943,6 @@ async def contractor_sign_contract(
     db.refresh(contractor)
 
     # Contract now awaiting superadmin review and signature
-    print(f"[INFO] Contract signed by contractor {contractor.id}")
-    print(f"[INFO] Awaiting superadmin review and signature")
-
     return {
         "message": "Contract signed successfully - Awaiting administrator review",
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
@@ -2972,7 +3025,6 @@ async def superadmin_sign_contract(
         contractor_filename = f"signed_contract_{contractor.first_name}_{contractor.surname}.pdf"
         contractor_folder = f"contractor-documents/{contractor.id}"
         contractor_file_url = upload_file(pdf_buffer, contractor_filename, contractor_folder)
-        print(f"[INFO] Uploaded signed contract to contractor folder: {contractor_file_url}")
 
         # Upload to Supabase in superadmin folder
         superadmin = current_user
@@ -2980,7 +3032,6 @@ async def superadmin_sign_contract(
         superadmin_folder = f"superadmin-contracts/{superadmin.id}"
         pdf_buffer.seek(0)  # Reset buffer for second upload
         superadmin_file_url = upload_file(pdf_buffer, superadmin_filename, superadmin_folder)
-        print(f"[INFO] Uploaded signed contract to superadmin folder: {superadmin_file_url}")
 
         # Update superadmin's contracts_signed array
         contracts_signed = superadmin.contracts_signed or []
@@ -3009,9 +3060,6 @@ async def superadmin_sign_contract(
         )
 
     # Contract is now fully signed - ready for activation
-    print(f"[INFO] Contract fully signed for contractor {contractor.id}")
-    print(f"[INFO] Ready for account activation")
-
     return {
         "message": "Contract signed successfully - Ready for activation",
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
@@ -3123,10 +3171,7 @@ async def activate_contractor_account(
             temp_password=temp_password
         )
 
-        if email_sent:
-            print(f"[SUCCESS] Activation email sent to {contractor.email}")
-        else:
-            print(f"[WARNING] Failed to send activation email to {contractor.email}")
+        # Email sent silently
     except Exception as e:
         print(f"[ERROR] Exception sending activation email: {str(e)}")
 
@@ -3154,6 +3199,7 @@ async def get_cohf_pdf(
     """
     Generate and download COHF PDF for a contractor (UAE route)
     Returns a 2-page A4 PDF document
+    If COHF has been signed, redirects to the signed document
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -3161,6 +3207,17 @@ async def get_cohf_pdf(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contractor not found"
+        )
+
+    # If signed COHF document exists, redirect to it
+    if contractor.cohf_signed_document:
+        return RedirectResponse(url=contractor.cohf_signed_document)
+
+    # For unsigned COHF, validate contractor is on UAE route
+    if contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COHF is only applicable for UAE route contractors. This contractor is on {contractor.onboarding_route.value if contractor.onboarding_route else 'no'} route."
         )
 
     # Prepare contractor data from model fields
@@ -3217,6 +3274,7 @@ async def get_cohf(
 ):
     """
     Get COHF data for a contractor (UAE route)
+    If COHF data exists, returns it regardless of current route (for viewing signed COHFs)
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -3224,6 +3282,16 @@ async def get_cohf(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contractor not found"
+        )
+
+    # Allow viewing if COHF data already exists (signed or in progress)
+    has_cohf_data = contractor.cohf_data or contractor.cohf_status or contractor.cohf_signed_document
+
+    # Only validate route if no COHF data exists yet
+    if not has_cohf_data and contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COHF is only applicable for UAE route contractors. This contractor is on {contractor.onboarding_route.value if contractor.onboarding_route else 'no'} route."
         )
 
     return {
@@ -3235,8 +3303,51 @@ async def get_cohf(
         "cohf_sent_to_3rd_party_date": contractor.cohf_sent_to_3rd_party_date,
         "cohf_docusign_received_date": contractor.cohf_docusign_received_date,
         "cohf_completed_date": contractor.cohf_completed_date,
+        "cohf_third_party_name": contractor.cohf_third_party_name,
+        "cohf_third_party_signature": contractor.cohf_third_party_signature,
         "onboarding_route": contractor.onboarding_route.value if contractor.onboarding_route else None,
         "status": contractor.status.value
+    }
+
+
+@router.get("/{contractor_id}/cohf/review")
+async def review_signed_cohf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Get signed COHF for review after third party has submitted it.
+    Returns complete COHF data including signature information.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check if COHF has been signed
+    if contractor.cohf_status != "signed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COHF has not been signed yet. Current status: {contractor.cohf_status}"
+        )
+
+    # Note: We don't validate route here since if COHF is signed, it should be viewable
+
+    return {
+        "contractor_id": contractor_id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "cohf_data": contractor.cohf_data,
+        "cohf_status": contractor.cohf_status,
+        "signed_date": contractor.cohf_completed_date,
+        "third_party_name": contractor.cohf_third_party_name,
+        "third_party_signature": contractor.cohf_third_party_signature,
+        "onboarding_route": contractor.onboarding_route.value if contractor.onboarding_route else None,
+        "status": contractor.status.value,
+        "can_proceed_to_cds": contractor.status == ContractorStatus.COHF_COMPLETED
     }
 
 
@@ -3332,6 +3443,13 @@ async def send_cohf_email_endpoint(
             detail="Contractor not found"
         )
 
+    # Validate contractor is on UAE route
+    if contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COHF is only for UAE route contractors. This contractor is on {contractor.onboarding_route.value if contractor.onboarding_route else 'no'} route."
+        )
+
     # If cohf_data is provided in the request, use it directly (no save needed)
     # Otherwise, use the saved cohf_data from the contractor
     cohf_data_to_use = data.cohf_data if data.cohf_data else contractor.cohf_data
@@ -3365,7 +3483,7 @@ async def send_cohf_email_endpoint(
 
     email_sent = send_cohf_email(
         third_party_email=data.third_party_email,
-        third_party_company=third_party_company,
+        third_party_name=third_party_company,
         contractor_name=contractor_name,
         cohf_token=cohf_token,
         expiry_date=token_expiry
@@ -3403,6 +3521,13 @@ async def recall_cohf(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Contractor not found"
+        )
+
+    # Validate contractor is on UAE route
+    if contractor.onboarding_route != OnboardingRoute.UAE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"COHF is only applicable for UAE route contractors. This contractor is on {contractor.onboarding_route.value if contractor.onboarding_route else 'no'} route."
         )
 
     if contractor.status != ContractorStatus.AWAITING_COHF_SIGNATURE:
