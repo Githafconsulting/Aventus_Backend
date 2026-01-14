@@ -13,6 +13,7 @@ class WorkOrderStatus(str, enum.Enum):
     SENT = "sent"
     PENDING_CLIENT_SIGNATURE = "pending_client_signature"
     CLIENT_SIGNED = "client_signed"
+    PENDING_AVENTUS_SIGNATURE = "pending_aventus_signature"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -70,6 +71,12 @@ class WorkOrder(Base):
     client_signature_data = Column(String, nullable=True)  # Name or base64 image
     client_signed_date = Column(DateTime, nullable=True)
 
+    # Aventus Admin Signature (Counter-signature)
+    aventus_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    aventus_signature_data = Column(String, nullable=True)  # Name or base64 image
+    aventus_signed_date = Column(DateTime, nullable=True)
+    aventus_signed_by = Column(String, ForeignKey("users.id"), nullable=True)  # Admin who signed
+
     # Audit fields
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     generated_by = Column(String, nullable=True)  # User ID who generated
@@ -89,3 +96,4 @@ class WorkOrder(Base):
     third_party = relationship("ThirdParty", backref="work_orders")
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
+    aventus_signer = relationship("User", foreign_keys=[aventus_signed_by])

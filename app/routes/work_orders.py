@@ -346,8 +346,8 @@ async def get_work_order_by_token(
             detail="Work order not found or link is invalid"
         )
 
-    # Check if already signed
-    if work_order.status == WorkOrderStatus.CLIENT_SIGNED:
+    # Check if already signed by client
+    if work_order.status in [WorkOrderStatus.PENDING_AVENTUS_SIGNATURE, WorkOrderStatus.COMPLETED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This work order has already been signed"
@@ -443,8 +443,8 @@ async def sign_work_order(
             detail="Work order not found or link is invalid"
         )
 
-    # Check if already signed
-    if work_order.status == WorkOrderStatus.CLIENT_SIGNED:
+    # Check if already signed by client
+    if work_order.status in [WorkOrderStatus.PENDING_AVENTUS_SIGNATURE, WorkOrderStatus.COMPLETED]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This work order has already been signed"
@@ -461,23 +461,133 @@ async def sign_work_order(
     work_order.client_signature_type = signature_data.signature_type
     work_order.client_signature_data = signature_data.signature_data
     work_order.client_signed_date = datetime.now(timezone.utc)
-    work_order.status = WorkOrderStatus.CLIENT_SIGNED
+    work_order.status = WorkOrderStatus.PENDING_AVENTUS_SIGNATURE
 
-    # Update contractor status to work_order_completed
+    # Note: Contractor status is NOT updated yet
+    # It will be updated to WORK_ORDER_COMPLETED only after Aventus counter-signs
+
+    db.commit()
+    db.refresh(work_order)
+
+    return {
+        "message": "Work order signed successfully. Awaiting Aventus counter-signature.",
+        "work_order_number": work_order.work_order_number,
+        "signed_date": work_order.client_signed_date.isoformat(),
+        "status": "pending_aventus_signature"
+    }
+
+# ============================================
+# AVENTUS COUNTER-SIGNATURE ENDPOINTS
+# ============================================
+
+@router.get("/{work_order_id}/view-signed")
+async def view_signed_work_order(
+    work_order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin", "consultant"]))
+):
+    """
+    View work order that has been signed by client, pending Aventus counter-signature.
+    Returns work order details including client signature.
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    # Check if work order has been signed by client
+    if work_order.status != WorkOrderStatus.PENDING_AVENTUS_SIGNATURE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Work order is not pending Aventus signature. Current status: {work_order.status.value}"
+        )
+
+    # Get contractor details
+    contractor = db.query(Contractor).filter(Contractor.id == work_order.contractor_id).first()
+
+    return {
+        "work_order_id": work_order.id,
+        "work_order_number": work_order.work_order_number,
+        "contractor_name": work_order.contractor_name,
+        "client_name": work_order.client_name,
+        "role": work_order.role,
+        "location": work_order.location,
+        "start_date": work_order.start_date.isoformat() if work_order.start_date else None,
+        "end_date": work_order.end_date.isoformat() if work_order.end_date else None,
+        "status": work_order.status.value,
+        "client_signature": {
+            "type": work_order.client_signature_type,
+            "data": work_order.client_signature_data,
+            "signed_date": work_order.client_signed_date.isoformat() if work_order.client_signed_date else None
+        },
+        "ready_for_counter_signature": True
+    }
+
+
+class AventusSignatureData(BaseModel):
+    signature_type: str  # "typed" or "drawn"
+    signature_data: str  # Name or base64 image
+
+
+@router.post("/{work_order_id}/counter-sign")
+async def counter_sign_work_order(
+    work_order_id: str,
+    signature_data: AventusSignatureData,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """
+    Aventus admin counter-signs a work order that has been signed by client.
+    This completes the work order and updates contractor status to WORK_ORDER_COMPLETED.
+    """
+    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+
+    if not work_order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Work order not found"
+        )
+
+    # Check if work order is pending Aventus signature
+    if work_order.status != WorkOrderStatus.PENDING_AVENTUS_SIGNATURE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Work order is not pending Aventus signature. Current status: {work_order.status.value}"
+        )
+
+    # Check if already counter-signed
+    if work_order.aventus_signed_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Work order has already been counter-signed by Aventus"
+        )
+
+    # Add Aventus signature
+    work_order.aventus_signature_type = signature_data.signature_type
+    work_order.aventus_signature_data = signature_data.signature_data
+    work_order.aventus_signed_date = datetime.now(timezone.utc)
+    work_order.aventus_signed_by = current_user.id
+    work_order.status = WorkOrderStatus.COMPLETED
+
+    # NOW update contractor status to work_order_completed
     contractor = db.query(Contractor).filter(
         Contractor.id == work_order.contractor_id
     ).first()
 
     if contractor:
         contractor.status = ContractorStatus.WORK_ORDER_COMPLETED
-        print(f"[INFO] Contractor {contractor.id} status updated to WORK_ORDER_COMPLETED")
 
     db.commit()
     db.refresh(work_order)
 
     return {
-        "message": "Work order signed successfully",
+        "message": "Work order counter-signed successfully. Work order is now fully executed.",
         "work_order_number": work_order.work_order_number,
-        "signed_date": work_order.client_signed_date.isoformat(),
-        "status": "work_order_completed"
+        "client_signed_date": work_order.client_signed_date.isoformat() if work_order.client_signed_date else None,
+        "aventus_signed_date": work_order.aventus_signed_date.isoformat(),
+        "aventus_signed_by": current_user.name,
+        "status": "completed"
     }

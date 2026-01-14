@@ -68,11 +68,22 @@ class Contractor(Base):
     activated_date = Column(DateTime(timezone=True), nullable=True)
     token_expiry = Column(DateTime(timezone=True), nullable=True)
 
-    # Third Party Route Data
+    # Third Party Route Data (Saudi Quote Sheet)
     third_party_company_id = Column(String, nullable=True)  # ID of selected third party
     third_party_email_sent_date = Column(DateTime(timezone=True), nullable=True)
     third_party_response_received_date = Column(DateTime(timezone=True), nullable=True)
     third_party_document = Column(String, nullable=True)  # Path to uploaded 3rd party document
+
+    # Third Party Quote Sheet Signatures
+    quote_sheet_third_party_signature = Column(Text, nullable=True)  # Third party signature data
+    quote_sheet_third_party_name = Column(String, nullable=True)  # Name of third party signer
+    quote_sheet_third_party_signed_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Aventus Admin Counter-signature for Quote Sheet
+    quote_sheet_aventus_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    quote_sheet_aventus_signature_data = Column(Text, nullable=True)  # Name or base64 image
+    quote_sheet_aventus_signed_date = Column(DateTime(timezone=True), nullable=True)
+    quote_sheet_aventus_signed_by = Column(String, ForeignKey("users.id"), nullable=True)  # Admin who signed
 
     # COHF (Cost of Hire Form) - UAE Route
     cohf_data = Column(JSON, nullable=True)  # COHF form data
@@ -86,6 +97,12 @@ class Contractor(Base):
     cohf_signed_document = Column(String, nullable=True)  # URL to signed COHF PDF
     cohf_third_party_signature = Column(Text, nullable=True)  # Signature data from 3rd party
     cohf_third_party_name = Column(String, nullable=True)  # Name of person who signed
+
+    # Aventus Admin Counter-signature for COHF
+    cohf_aventus_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
+    cohf_aventus_signature_data = Column(Text, nullable=True)  # Name or base64 image
+    cohf_aventus_signed_date = Column(DateTime(timezone=True), nullable=True)
+    cohf_aventus_signed_by = Column(String, ForeignKey("users.id"), nullable=True)  # Admin who signed
 
     # UAE 3rd Party Contract Upload
     third_party_contract_url = Column(String, nullable=True)  # URL to contract uploaded by 3rd party
