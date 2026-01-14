@@ -664,11 +664,13 @@ async def submit_cds_form(
         )
 
     # Check if contractor is ready for CDS
-    # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, COHF_COMPLETED (UAE route), PENDING_REVIEW (editing after rejection)
+    # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, COHF_COMPLETED (UAE route), PENDING_COHF (filled but not signed), PENDING_REVIEW (editing after rejection)
     valid_statuses = [
         ContractorStatus.DOCUMENTS_UPLOADED,
         ContractorStatus.PENDING_CDS_CS,
         ContractorStatus.COHF_COMPLETED,
+        ContractorStatus.PENDING_COHF,
+        ContractorStatus.AWAITING_COHF_SIGNATURE,
         ContractorStatus.PENDING_REVIEW,
         ContractorStatus.CDS_CS_COMPLETED,
     ]
