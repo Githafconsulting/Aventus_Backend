@@ -2465,14 +2465,14 @@ async def request_quote_sheet(
     # Send email with upload link
     upload_url = f"{settings.frontend_url}/quote-sheet/upload?token={upload_token}"
 
-    from app.utils.email import send_third_party_contractor_request
-    email_sent = send_third_party_contractor_request(
+    from app.utils.email import send_quote_sheet_request
+    email_sent = send_quote_sheet_request(
         third_party_email=data.third_party_email,
-        third_party_company_name=third_party_company_name,
-        email_subject=data.email_subject,
-        email_body=data.email_message,
-        consultant_name=current_user.name,
+        third_party_name=third_party_company_name,
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
         upload_url=upload_url,
+        expiry_date=token_expiry,
+        email_subject=data.email_subject,
         email_cc=data.email_cc
     )
 

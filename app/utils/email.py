@@ -367,3 +367,62 @@ def send_uploaded_timesheet_to_manager(
         client_name=client_name,
     )
     return _send_email(manager_email, f"Timesheet Uploaded - {contractor_name}", html)
+
+
+# =============================================================================
+# Quote Sheet (Saudi Route)
+# =============================================================================
+
+def send_quote_sheet_request(
+    third_party_email: str,
+    third_party_name: str,
+    contractor_name: str,
+    upload_url: str,
+    expiry_date: datetime,
+    email_subject: Optional[str] = None,
+    email_cc: Optional[str] = None
+) -> bool:
+    """Send quote sheet request to third party for Saudi route."""
+    html = _render_template(
+        "quote_sheet_request",
+        third_party_name=third_party_name,
+        contractor_name=contractor_name,
+        quote_link=upload_url,
+        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    )
+    subject = email_subject or f"Quote Sheet Request - {contractor_name}"
+
+    if email_cc:
+        return _send_email_with_cc(third_party_email, email_cc, subject, html)
+    return _send_email(third_party_email, subject, html)
+
+
+def _send_email_with_cc(to: str, cc: str, subject: str, html: str) -> bool:
+    """Send email via Resend with CC."""
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+
+    api_key = os.getenv("RESEND_API_KEY")
+    from_email = os.getenv("FROM_EMAIL")
+
+    if not api_key:
+        print("[EMAIL] ERROR: RESEND_API_KEY not set")
+        return False
+
+    resend.api_key = api_key
+
+    try:
+        resend.Emails.send({
+            "from": from_email or "Aventus HR <noreply@aventushr.com>",
+            "to": to,
+            "cc": cc,
+            "subject": subject,
+            "html": html,
+        })
+        print(f"[EMAIL] Sent to {to} (CC: {cc}): {subject}")
+        return True
+    except Exception as e:
+        print(f"[EMAIL] ERROR sending to {to}: {e}")
+        return False
