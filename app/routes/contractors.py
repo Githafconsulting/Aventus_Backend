@@ -665,6 +665,7 @@ async def submit_cds_form(
 
     # Check if contractor is ready for CDS
     # Allow: DOCUMENTS_UPLOADED, PENDING_CDS_CS, COHF_COMPLETED (UAE route), PENDING_COHF (filled but not signed), PENDING_REVIEW (editing after rejection)
+    # Also allow PENDING_THIRD_PARTY_RESPONSE for Saudi route (quote sheet sent, waiting for response)
     valid_statuses = [
         ContractorStatus.DOCUMENTS_UPLOADED,
         ContractorStatus.PENDING_CDS_CS,
@@ -673,6 +674,7 @@ async def submit_cds_form(
         ContractorStatus.AWAITING_COHF_SIGNATURE,
         ContractorStatus.PENDING_REVIEW,
         ContractorStatus.CDS_CS_COMPLETED,
+        ContractorStatus.PENDING_THIRD_PARTY_RESPONSE,
     ]
     if contractor.status not in valid_statuses:
         raise HTTPException(
