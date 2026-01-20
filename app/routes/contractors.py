@@ -1021,6 +1021,8 @@ async def submit_costing_sheet(
         ContractorStatus.PENDING_COHF,  # UAE route - COHF filled but not signed
         ContractorStatus.AWAITING_COHF_SIGNATURE,  # UAE route - sent to third party
         ContractorStatus.PENDING_REVIEW,  # Allow re-submission after rejection
+        ContractorStatus.PENDING_THIRD_PARTY_QUOTE,  # Saudi route
+        ContractorStatus.PENDING_THIRD_PARTY_RESPONSE,  # Saudi route
     ]
     if contractor.status not in valid_statuses:
         raise HTTPException(
