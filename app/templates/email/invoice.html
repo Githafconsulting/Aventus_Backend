@@ -1,0 +1,44 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ client_name }},</h2>
+
+<p class="intro-text">
+    Please find attached invoice <strong>{{ invoice_number }}</strong> for contractor services provided during <strong>{{ period }}</strong>.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📄</div>
+    <div class="document-title">Invoice {{ invoice_number }}</div>
+    <p class="document-desc">
+        Contractor: {{ contractor_name }}<br>
+        Period: {{ period }}<br>
+        Amount Due: {{ currency }} {{ total_amount | currency }}
+    </p>
+</div>
+
+<div class="notice">
+    <strong>Payment Due Date</strong>
+    <p>Please ensure payment is received by <strong>{{ due_date }}</strong>.</p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ portal_link }}" class="cta-button">View Invoice Online</a>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Payment Details</strong>
+    <p>Bank details for payment are included in the attached invoice. If you have any questions regarding this invoice, please contact our finance team.</p>
+</div>
+
+<p class="intro-text">
+    Thank you for your business.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Finance Team</span>
+</div>
+{% endblock %}

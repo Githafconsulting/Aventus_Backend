@@ -14,7 +14,14 @@
       "Bash(cmd /c \"dir /b \"\"c:\\Users\\papcy\\Desktop\\Aventus Backend\\_archived\"\"\")",
       "Bash(cmd /c \"dir \"\"c:\\Users\\papcy\\Desktop\\Aventus Backend\"\" /b\")",
       "Bash(powershell -Command:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(alembic revision:*)",
+      "Bash(ls:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix dark flash during page navigation\n\nChange body background from black to gray-50 to prevent dark screen\nflash when navigating between pages at ~90% load progress.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(netstat:*)",
+      "Bash(curl:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,38 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ contractor_name }}!</h2>
+
+<p class="intro-text">
+    Your payslip for <strong>{{ period }}</strong> is now available. Please find the details below and the PDF attached to this email.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">💰</div>
+    <div class="document-title">Payslip {{ document_number }}</div>
+    <p class="document-desc">
+        Period: {{ period }}<br>
+        Net Salary: {{ currency }} {{ net_salary | currency }}
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ portal_link }}" class="cta-button">View Payslip Online</a>
+</div>
+
+<div class="info-box">
+    <strong>Attached Document</strong>
+    <p>A PDF copy of your payslip is attached to this email for your records. You can also access and download it anytime using the button above.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    If you have any questions about your payslip or payment, please contact our finance team.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

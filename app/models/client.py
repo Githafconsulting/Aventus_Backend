@@ -74,4 +74,4 @@ class Client(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    # contracts = relationship("Contract", back_populates="client")  # Uncomment when Contract model has client relationship
+    invoices = relationship("Invoice", back_populates="client")

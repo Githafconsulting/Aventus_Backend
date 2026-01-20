@@ -9,5 +9,13 @@ from app.models.template import Template, TemplateType
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.models.proposal import Proposal, ProposalStatus
 from app.models.payroll import Payroll, PayrollStatus
+from app.models.payslip import Payslip, PayslipStatus
+from app.models.invoice import Invoice, InvoiceStatus, InvoicePayment
 
-__all__ = ["User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet", "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus", "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus", "Proposal", "ProposalStatus", "Payroll", "PayrollStatus"]
+__all__ = [
+    "User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet",
+    "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus",
+    "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus",
+    "Proposal", "ProposalStatus", "Payroll", "PayrollStatus",
+    "Payslip", "PayslipStatus", "Invoice", "InvoiceStatus", "InvoicePayment"
+]

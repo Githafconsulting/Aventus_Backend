@@ -100,3 +100,5 @@ class Payroll(Base):
     timesheet = relationship("Timesheet", back_populates="payroll")
     contractor = relationship("Contractor", back_populates="payrolls")
     approver = relationship("User", foreign_keys=[approved_by])
+    payslip = relationship("Payslip", back_populates="payroll", uselist=False)
+    invoice = relationship("Invoice", back_populates="payroll", uselist=False)

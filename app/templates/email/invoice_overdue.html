@@ -1,0 +1,41 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ client_name }},</h2>
+
+<p class="intro-text">
+    This is a friendly reminder that invoice <strong>{{ invoice_number }}</strong> is now <strong>{{ days_overdue }} days overdue</strong>.
+</p>
+
+<div class="document-box" style="border-left: 4px solid #EF4444;">
+    <div class="document-icon">⚠️</div>
+    <div class="document-title">Overdue Invoice</div>
+    <p class="document-desc">
+        Invoice Number: {{ invoice_number }}<br>
+        Contractor: {{ contractor_name }}<br>
+        Original Due Date: {{ due_date }}<br>
+        Outstanding Balance: {{ currency }} {{ balance | currency }}
+    </p>
+</div>
+
+<div class="notice" style="background-color: #FEF2F2; border-left-color: #EF4444;">
+    <strong>Immediate Action Required</strong>
+    <p>Please arrange payment at your earliest convenience to avoid any service disruptions.</p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ portal_link }}" class="cta-button">View Invoice & Pay</a>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Already Paid?</strong>
+    <p>If you have already made this payment, please disregard this reminder. We appreciate your prompt attention to this matter. Please contact our finance team if you need to discuss payment arrangements.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Finance Team</span>
+</div>
+{% endblock %}

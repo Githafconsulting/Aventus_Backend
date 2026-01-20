@@ -321,3 +321,5 @@ class Contractor(Base):
     timesheets = relationship("Timesheet", back_populates="contractor")
     contracts = relationship("Contract", back_populates="contractor")
     payrolls = relationship("Payroll", back_populates="contractor")
+    payslips = relationship("Payslip", back_populates="contractor")
+    invoices = relationship("Invoice", back_populates="contractor")
