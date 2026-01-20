@@ -180,7 +180,11 @@ async def upload_quote_sheet(
     # Update contractor status to PENDING_CDS_CS so consultant can fill CDS & CS form
     from app.models.contractor import ContractorStatus
     contractor = db.query(Contractor).filter(Contractor.id == quote_sheet.contractor_id).first()
-    if contractor and contractor.status in [ContractorStatus.DOCUMENTS_UPLOADED, ContractorStatus.PENDING_THIRD_PARTY_RESPONSE]:
+    if contractor and contractor.status in [
+        ContractorStatus.DOCUMENTS_UPLOADED,
+        ContractorStatus.PENDING_THIRD_PARTY_RESPONSE,
+        ContractorStatus.PENDING_THIRD_PARTY_QUOTE,
+    ]:
         # Change status to PENDING_CDS_CS - will change to PENDING_REVIEW after costing sheet submission
         contractor.status = ContractorStatus.PENDING_CDS_CS
         contractor.third_party_response_received_date = datetime.utcnow()
