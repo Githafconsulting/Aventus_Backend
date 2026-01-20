@@ -142,6 +142,54 @@ async def list_contractors(
     return contractors
 
 
+@router.get("/summary", response_model=List[dict])
+async def list_contractors_summary(
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    page: int = Query(1, description="Page number"),
+    limit: int = Query(50, description="Items per page"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    List contractors with minimal fields for dashboard/list views.
+    Much faster than full list as it only fetches required columns.
+    Supports pagination with page and limit parameters.
+    """
+    # Only select the columns needed for dashboard display
+    query = db.query(
+        Contractor.id,
+        Contractor.first_name,
+        Contractor.surname,
+        Contractor.email,
+        Contractor.status,
+        Contractor.created_at,
+        Contractor.phone,
+        Contractor.consultant_name
+    )
+
+    if status_filter:
+        query = query.filter(Contractor.status == status_filter)
+
+    # Apply pagination
+    offset = (page - 1) * limit
+    results = query.order_by(Contractor.created_at.desc()).offset(offset).limit(limit).all()
+
+    # Convert to list of dicts
+    return [
+        {
+            "id": r.id,
+            "first_name": r.first_name,
+            "surname": r.surname,
+            "email": r.email,
+            "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "phone": r.phone,
+            "consultant_name": r.consultant_name
+        }
+        for r in results
+    ]
+
+
 @router.get("/{contractor_id}/signed-contract")
 async def get_signed_contract(
     contractor_id: str,

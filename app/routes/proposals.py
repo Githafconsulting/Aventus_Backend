@@ -88,6 +88,66 @@ async def get_proposals(
     return proposals
 
 
+@router.get("/summary", response_model=List[dict])
+async def get_proposals_summary(
+    status_filter: Optional[ProposalStatus] = None,
+    client_id: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get proposals with minimal fields for dashboard/list views.
+    Much faster than full list - only fetches required columns.
+    Supports pagination with page and limit parameters.
+    """
+    # Only select the columns needed for dashboard display
+    query = db.query(
+        Proposal.id,
+        Proposal.proposal_number,
+        Proposal.client_id,
+        Proposal.client_company_name,
+        Proposal.project_name,
+        Proposal.status,
+        Proposal.total_amount,
+        Proposal.currency,
+        Proposal.created_at,
+        Proposal.valid_until
+    )
+
+    # Consultants can only see their own proposals
+    if current_user.role == UserRole.CONSULTANT:
+        query = query.filter(Proposal.consultant_id == current_user.id)
+
+    if status_filter:
+        query = query.filter(Proposal.status == status_filter)
+
+    if client_id:
+        query = query.filter(Proposal.client_id == client_id)
+
+    # Apply pagination
+    offset = (page - 1) * limit
+    results = query.order_by(Proposal.created_at.desc()).offset(offset).limit(limit).all()
+
+    # Convert to list of dicts
+    return [
+        {
+            "id": r.id,
+            "proposal_number": r.proposal_number,
+            "client_id": r.client_id,
+            "client_company_name": r.client_company_name,
+            "project_name": r.project_name,
+            "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "total_amount": r.total_amount,
+            "currency": r.currency,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "valid_until": r.valid_until.isoformat() if r.valid_until else None
+        }
+        for r in results
+    ]
+
+
 @router.get("/{proposal_id}", response_model=ProposalResponse)
 async def get_proposal(
     proposal_id: str,

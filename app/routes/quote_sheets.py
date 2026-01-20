@@ -227,6 +227,62 @@ async def get_quote_sheets(
     return quote_sheets
 
 
+@router.get("/summary", response_model=List[dict])
+async def get_quote_sheets_summary(
+    status_filter: Optional[QuoteSheetStatus] = None,
+    contractor_id: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get quote sheets with minimal fields for dashboard/list views.
+    Much faster than full list - only fetches required columns.
+    Supports pagination with page and limit parameters.
+    """
+    # Only select the columns needed for dashboard display
+    query = db.query(
+        QuoteSheet.id,
+        QuoteSheet.contractor_id,
+        QuoteSheet.contractor_name,
+        QuoteSheet.third_party_company_name,
+        QuoteSheet.status,
+        QuoteSheet.total_invoice_amount,
+        QuoteSheet.created_at,
+        QuoteSheet.submitted_at
+    )
+
+    # Consultants can only see their own quote sheets
+    if current_user.role == UserRole.CONSULTANT:
+        query = query.filter(QuoteSheet.consultant_id == current_user.id)
+
+    if status_filter:
+        query = query.filter(QuoteSheet.status == status_filter)
+
+    if contractor_id:
+        query = query.filter(QuoteSheet.contractor_id == contractor_id)
+
+    # Apply pagination
+    offset = (page - 1) * limit
+    results = query.order_by(QuoteSheet.created_at.desc()).offset(offset).limit(limit).all()
+
+    # Convert to list of dicts
+    return [
+        {
+            "id": r.id,
+            "contractor_id": r.contractor_id,
+            "contractor_name": r.contractor_name,
+            "third_party_company_name": r.third_party_company_name,
+            "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "total_invoice_amount": r.total_invoice_amount,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None
+        }
+        for r in results
+    ]
+
+
 @router.get("/{quote_sheet_id}", response_model=QuoteSheetResponse)
 async def get_quote_sheet(
     quote_sheet_id: str,
