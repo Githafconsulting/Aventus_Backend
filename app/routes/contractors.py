@@ -4141,3 +4141,59 @@ async def approve_third_party_contract(
         "next_step": "activate"
     }
 
+
+@router.post("/{contractor_id}/fix-status")
+async def fix_contractor_status(
+    contractor_id: str,
+    target_status: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """
+    Admin endpoint to manually fix contractor status.
+    Useful for fixing contractors stuck in wrong status due to bugs.
+
+    Valid target statuses:
+    - pending_cds_cs: For contractors who have quote sheet uploaded but status wasn't updated
+    - pending_third_party_response: For contractors awaiting third party response
+    - documents_uploaded: Reset to documents uploaded state
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Map string to enum
+    status_map = {
+        "pending_cds_cs": ContractorStatus.PENDING_CDS_CS,
+        "pending_third_party_response": ContractorStatus.PENDING_THIRD_PARTY_RESPONSE,
+        "pending_third_party_quote": ContractorStatus.PENDING_THIRD_PARTY_QUOTE,
+        "documents_uploaded": ContractorStatus.DOCUMENTS_UPLOADED,
+        "pending_review": ContractorStatus.PENDING_REVIEW,
+        "pending_cohf": ContractorStatus.PENDING_COHF,
+        "cohf_completed": ContractorStatus.COHF_COMPLETED,
+    }
+
+    if target_status not in status_map:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid target status. Valid options: {list(status_map.keys())}"
+        )
+
+    old_status = contractor.status.value
+    contractor.status = status_map[target_status]
+    contractor.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": f"Contractor status updated from {old_status} to {target_status}",
+        "contractor_id": contractor.id,
+        "old_status": old_status,
+        "new_status": contractor.status.value
+    }
+
