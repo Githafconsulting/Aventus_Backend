@@ -7,9 +7,10 @@ from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
 import base64
+import os
 
 
-def format_currency(value, default=""):
+def format_currency(value, default="-"):
     """Format a number as currency with comma separators"""
     if value is None or value == "":
         return default
@@ -24,7 +25,8 @@ def format_currency(value, default=""):
 
 def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     """
-    Generate a professional Quote Sheet PDF for Saudi Arabia - White Collar
+    Generate Quote Sheet PDF matching the frontend edit mode design.
+    Uses dark red (#9B1B1B) as the primary color like FNRCO branding.
 
     Args:
         quote_sheet_data: Dictionary containing all quote sheet form data
@@ -37,21 +39,27 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=15*mm,
-        leftMargin=15*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm,
+        rightMargin=12*mm,
+        leftMargin=12*mm,
+        topMargin=10*mm,
+        bottomMargin=10*mm,
     )
 
     elements = []
     styles = getSampleStyleSheet()
 
+    # Get primary color from data or use default dark red
+    primary_color_hex = quote_sheet_data.get('primary_color', '#9B1B1B')
+    try:
+        primary_color = colors.HexColor(primary_color_hex)
+    except:
+        primary_color = colors.HexColor('#9B1B1B')
+
     # Colors
-    header_blue = colors.HexColor('#1a5f7a')
-    light_gray = colors.HexColor('#f5f5f5')
-    total_yellow = colors.HexColor('#fff3cd')
-    total_green = colors.HexColor('#d4edda')
-    dark_gray = colors.HexColor('#333333')
+    light_gray = colors.HexColor('#f3f4f6')
+    orange_bg = colors.HexColor('#fff7ed')
+    dark_gray = colors.HexColor('#1f2937')
+    border_gray = colors.HexColor('#d1d5db')
 
     # Helper to get value
     def get_val(key, default=""):
@@ -73,16 +81,16 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     title_style = ParagraphStyle(
         'Title',
         fontSize=14,
-        textColor=header_blue,
+        textColor=primary_color,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold',
-        spaceAfter=3*mm,
+        spaceAfter=2*mm,
     )
 
     subtitle_style = ParagraphStyle(
         'Subtitle',
-        fontSize=9,
-        textColor=dark_gray,
+        fontSize=8,
+        textColor=colors.HexColor('#6b7280'),
         alignment=TA_CENTER,
         fontName='Helvetica',
     )
@@ -96,529 +104,404 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
 
     cell_style = ParagraphStyle(
         'Cell',
-        fontSize=8,
+        fontSize=7,
         textColor=dark_gray,
         fontName='Helvetica',
-        leading=10,
+        leading=9,
     )
 
     cell_bold_style = ParagraphStyle(
         'CellBold',
-        fontSize=8,
+        fontSize=7,
         textColor=dark_gray,
         fontName='Helvetica-Bold',
-        leading=10,
+        leading=9,
+    )
+
+    cell_right_style = ParagraphStyle(
+        'CellRight',
+        fontSize=7,
+        textColor=dark_gray,
+        fontName='Helvetica',
+        leading=9,
+        alignment=TA_RIGHT,
+    )
+
+    cell_right_bold_style = ParagraphStyle(
+        'CellRightBold',
+        fontSize=7,
+        textColor=dark_gray,
+        fontName='Helvetica-Bold',
+        leading=9,
+        alignment=TA_RIGHT,
+    )
+
+    header_cell_style = ParagraphStyle(
+        'HeaderCell',
+        fontSize=7,
+        textColor=colors.HexColor('#374151'),
+        fontName='Helvetica-Bold',
+        leading=9,
     )
 
     # ============== HEADER ==============
-    elements.append(Paragraph("Cost Estimation Sheet - White Collar", title_style))
-    elements.append(Paragraph("Minimum Contract Period is 12 Months", subtitle_style))
+    # Company name on right
+    company_name = get_val('to_company_name', 'FNRCO')
+    company_address = get_val('to_company_address', 'Riyadh, Saudi Arabia')
 
-    issued_date = get_val('issued_date', datetime.now().strftime('%B %d, %Y'))
-    elements.append(Paragraph(f"Issued Date: {issued_date}", subtitle_style))
-    elements.append(Spacer(1, 5*mm))
+    header_data = [
+        [
+            Paragraph("", cell_style),
+            Paragraph(f"<b>{company_name}</b><br/>{company_address}", ParagraphStyle('Right', fontSize=8, alignment=TA_RIGHT, textColor=dark_gray))
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[120*mm, 60*mm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LINEBELOW', (0, 0), (-1, 0), 1.5, primary_color),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 3*mm))
+
+    # Title
+    doc_title = get_val('document_title', 'Cost Estimation Sheet - White Collar')
+    elements.append(Paragraph(doc_title, title_style))
+
+    # Subtitle with issued date
+    minimum_note = get_val('minimum_contract_note', 'Minimum Contract Period is 12 Months')
+    issued_date = get_val('issued_date', 'April 21, 2025')
+    elements.append(Paragraph(f"{minimum_note}  |  Issued Date: {issued_date}", subtitle_style))
+    elements.append(Spacer(1, 3*mm))
 
     # Helper function to create section header
     def create_section_header(title):
         header_table = Table(
             [[Paragraph(title, section_header_style)]],
-            colWidths=[180*mm]
+            colWidths=[186*mm]
         )
         header_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), header_blue),
-            ('LEFTPADDING', (0, 0), (-1, -1), 5),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+            ('BACKGROUND', (0, 0), (-1, -1), primary_color),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         return header_table
 
     # ============== (A) EMPLOYEE CONTRACT INFORMATION ==============
-    elements.append(create_section_header("(A). Employee Contract Information"))
+    elements.append(create_section_header("(A) Employee Contract Information"))
 
-    company_name = get_val('third_party_company_name', get_val('company_name', 'Aventus Global'))
-
-    emp_info_data = [
-        [Paragraph("<b>Name</b>", cell_bold_style),
-         Paragraph(get_val('employee_name', get_val('contractor_name', '')), cell_style),
-         Paragraph(company_name, cell_style)],
-        [Paragraph("<b>Role</b>", cell_bold_style),
-         Paragraph(get_val('role', ''), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>Date of Hiring</b>", cell_bold_style),
-         Paragraph(get_val('date_of_hiring', ''), cell_style),
-         Paragraph("", cell_style)],
-        [Paragraph("<b>Nationality</b>", cell_bold_style),
-         Paragraph(get_val('nationality', ''), cell_style),
-         Paragraph("", cell_style)],
-        [Paragraph("<b>Status Single or Family</b>", cell_bold_style),
-         Paragraph(get_val('family_status', 'Single'), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>No. of Children Below 18 Years of Age</b>", cell_bold_style),
-         Paragraph(get_val('num_children', '0'), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
+    emp_info_header = [
+        Paragraph("<b>Employee Name</b>", header_cell_style),
+        Paragraph("<b>Role / Position</b>", header_cell_style),
+        Paragraph("<b>Date of Hiring</b>", header_cell_style),
+        Paragraph("<b>Nationality</b>", header_cell_style),
+        Paragraph("<b>Status / Children</b>", header_cell_style),
     ]
 
-    emp_table = Table(emp_info_data, colWidths=[70*mm, 50*mm, 60*mm])
+    family_status = get_val('family_status', '')
+    num_children = get_val('num_children', '')
+    status_children = f"{family_status}" + (f" / {num_children}" if num_children else "")
+
+    emp_info_data = [
+        emp_info_header,
+        [
+            Paragraph(get_val('employee_name', ''), cell_style),
+            Paragraph(get_val('role', ''), cell_style),
+            Paragraph(get_val('date_of_hiring', ''), cell_style),
+            Paragraph(get_val('nationality', ''), cell_style),
+            Paragraph(status_children, cell_style),
+        ]
+    ]
+
+    emp_table = Table(emp_info_data, colWidths=[37.2*mm, 37.2*mm, 37.2*mm, 37.2*mm, 37.2*mm])
     emp_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (0, -1), light_gray),
+        ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
+        ('BACKGROUND', (0, 0), (-1, 0), light_gray),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(emp_table)
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 3*mm))
 
     # ============== (B) EMPLOYEE CASH BENEFITS ==============
-    elements.append(create_section_header("(B). Employee Cash Benefits"))
+    elements.append(create_section_header("(B) Employee Cash Benefits (SAR)"))
 
     cash_header = [
-        Paragraph("", cell_bold_style),
-        Paragraph("<b>AMOUNT IN SAR</b>", cell_bold_style),
-        Paragraph("<b>REMARKS</b>", cell_bold_style),
+        Paragraph("<b>Basic Salary</b>", header_cell_style),
+        Paragraph("<b>Transport</b>", header_cell_style),
+        Paragraph("<b>Housing</b>", header_cell_style),
+        Paragraph("<b>Rate/Day</b>", header_cell_style),
+        Paragraph("<b>Working Days</b>", header_cell_style),
+        Paragraph("<b>AED-SAR</b>", header_cell_style),
+        Paragraph("<b>Gross Salary</b>", header_cell_style),
     ]
+
+    gross_salary = get_num('gross_salary')
+    if gross_salary is None:
+        # Calculate if not provided
+        basic = get_num('basic_salary', 0) or 0
+        transport = get_num('transport_allowance', 0) or 0
+        housing = get_num('housing_allowance', 0) or 0
+        gross_salary = basic + transport + housing
 
     cash_data = [
         cash_header,
-        [Paragraph("<b>Basic Salary</b>", cell_bold_style),
-         Paragraph(format_currency(get_num('basic_salary')), cell_style),
-         Paragraph("Salary is variable as per the categories", cell_style)],
-        [Paragraph("<b>Transport Allowance</b>", cell_bold_style),
-         Paragraph(format_currency(get_num('transport_allowance')), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>Housing Allowance</b>", cell_bold_style),
-         Paragraph(format_currency(get_num('housing_allowance')), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>Rate Per Day</b>", cell_bold_style),
-         Paragraph(format_currency(get_num('rate_per_day')), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>Working Days / Month</b>", cell_bold_style),
-         Paragraph(get_val('working_days_month', ''), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>AED to SAR</b>", cell_bold_style),
-         Paragraph(get_val('aed_to_sar', ''), cell_style),
-         Paragraph("According to Client Policy", cell_style)],
-        [Paragraph("<b>Employee Monthly Total Cash Benefits</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('gross_salary'))}</b>", cell_bold_style),
-         Paragraph("<b>Gross Salary</b>", cell_bold_style)],
+        [
+            Paragraph(format_currency(get_num('basic_salary')), cell_right_style),
+            Paragraph(format_currency(get_num('transport_allowance')), cell_right_style),
+            Paragraph(format_currency(get_num('housing_allowance')), cell_right_style),
+            Paragraph(format_currency(get_num('rate_per_day')), cell_right_style),
+            Paragraph(str(get_val('working_days', '')), cell_right_style),
+            Paragraph(str(get_val('aed_to_sar_rate', '1.02')), cell_right_style),
+            Paragraph(f"<b>{format_currency(gross_salary)}</b>", cell_right_bold_style),
+        ]
     ]
 
-    cash_table = Table(cash_data, colWidths=[70*mm, 50*mm, 60*mm])
+    cash_table = Table(cash_data, colWidths=[26.6*mm, 26.6*mm, 26.6*mm, 26.6*mm, 26.6*mm, 26.6*mm, 26.6*mm])
     cash_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
         ('BACKGROUND', (0, 0), (-1, 0), light_gray),
-        ('BACKGROUND', (0, 1), (0, -2), light_gray),
-        ('BACKGROUND', (0, -1), (-1, -1), total_green),
+        ('BACKGROUND', (6, 1), (6, 1), orange_bg),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(cash_table)
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 3*mm))
+
+    # Helper for cost tables with 5 columns
+    def create_cost_table(section_title, rows_config, totals_key_prefix):
+        elements.append(create_section_header(section_title))
+
+        cost_header = [
+            Paragraph("<b>Description</b>", header_cell_style),
+            Paragraph("<b>One Time</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+            Paragraph("<b>Annual</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+            Paragraph("<b>Monthly</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+            Paragraph("<b>Remarks / Clarification</b>", header_cell_style),
+        ]
+
+        cost_data = [cost_header]
+
+        total_one_time = 0
+        total_annual = 0
+        total_monthly = 0
+
+        for prefix, default_label in rows_config:
+            label = get_val(f'{prefix}_label', default_label)
+            one_time = get_num(f'{prefix}_one_time')
+            annual = get_num(f'{prefix}_annual')
+            monthly = get_num(f'{prefix}_monthly')
+            remarks = get_val(f'{prefix}_remarks', '')
+
+            total_one_time += one_time or 0
+            total_annual += annual or 0
+            total_monthly += monthly or 0
+
+            cost_data.append([
+                Paragraph(label, cell_style),
+                Paragraph(format_currency(one_time), cell_right_style),
+                Paragraph(format_currency(annual), cell_right_style),
+                Paragraph(format_currency(monthly), cell_right_style),
+                Paragraph(remarks, cell_style),
+            ])
+
+        # Total row
+        cost_data.append([
+            Paragraph(f"<b>Total {totals_key_prefix}</b>", cell_bold_style),
+            Paragraph(f"<b>{format_currency(total_one_time if total_one_time > 0 else None)}</b>", cell_right_bold_style),
+            Paragraph(f"<b>{format_currency(total_annual if total_annual > 0 else None)}</b>", cell_right_bold_style),
+            Paragraph(f"<b>{format_currency(total_monthly if total_monthly > 0 else None)}</b>", cell_right_bold_style),
+            Paragraph("", cell_style),
+        ])
+
+        cost_table = Table(cost_data, colWidths=[44.6*mm, 28*mm, 28*mm, 28*mm, 57.6*mm])
+        cost_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
+            ('BACKGROUND', (0, 0), (-1, 0), light_gray),
+            ('BACKGROUND', (0, -1), (-1, -1), orange_bg),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(cost_table)
+        elements.append(Spacer(1, 3*mm))
+
+        return total_one_time, total_annual, total_monthly
 
     # ============== (C) EMPLOYEE COST ==============
-    elements.append(create_section_header("(C). Employee Cost (Charges in SAR)"))
-
-    cost_header = [
-        Paragraph("", cell_bold_style),
-        Paragraph("<b>One Time</b>", cell_bold_style),
-        Paragraph("<b>Annual</b>", cell_bold_style),
-        Paragraph("<b>Monthly</b>", cell_bold_style),
-        Paragraph("<b>Remarks</b>", cell_bold_style),
+    section_c_rows = [
+        ('vacation', 'Cost of Annual Vacation (30 Days) for Employee'),
+        ('flight_tickets', 'Cost of Annual Flight Tickets for Employee'),
+        ('eosb', 'Monthly Cost of EOSB of Employee'),
+        ('gosi', 'GOSI of Employee'),
+        ('medical_insurance', 'Annual Medical Insurance (A1 Class)'),
+        ('exit_reentry', 'Exit Re-Entry Charges of Employee'),
+        ('salary_transfer', 'Salary Transfer (Monthly)'),
+        ('sick_leave', 'Sick Leave and Public Holiday Cost'),
     ]
-
-    employee_cost_data = [
-        cost_header,
-        [Paragraph("Cost of Annual Vacation 30 Calendar Days for Employee", cell_style),
-         Paragraph(format_currency(get_num('vacation_one_time')), cell_style),
-         Paragraph(format_currency(get_num('vacation_annual')), cell_style),
-         Paragraph(format_currency(get_num('vacation_monthly')), cell_style),
-         Paragraph("12 Month Contract", cell_style)],
-        [Paragraph("Cost of Annual Flight Tickets for Employee", cell_style),
-         Paragraph(format_currency(get_num('flight_one_time')), cell_style),
-         Paragraph(format_currency(get_num('flight_annual')), cell_style),
-         Paragraph(format_currency(get_num('flight_monthly')), cell_style),
-         Paragraph("As Per Actuals / After 1 Year", cell_style)],
-        [Paragraph("Monthly Cost of EOSB of Employee", cell_style),
-         Paragraph(format_currency(get_num('eosb_one_time')), cell_style),
-         Paragraph(format_currency(get_num('eosb_annual')), cell_style),
-         Paragraph(format_currency(get_num('eosb_monthly')), cell_style),
-         Paragraph("Monthly", cell_style)],
-        [Paragraph("Monthly Cost of GOSI of Employee", cell_style),
-         Paragraph(format_currency(get_num('gosi_one_time')), cell_style),
-         Paragraph(format_currency(get_num('gosi_annual')), cell_style),
-         Paragraph(format_currency(get_num('gosi_monthly')), cell_style),
-         Paragraph("Monthly", cell_style)],
-        [Paragraph("Annual Medical Insurance for Employee (A1 Class)", cell_style),
-         Paragraph(format_currency(get_num('medical_one_time')), cell_style),
-         Paragraph(format_currency(get_num('medical_annual')), cell_style),
-         Paragraph(format_currency(get_num('medical_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("Exit Re-Entry Charges of Employee", cell_style),
-         Paragraph(format_currency(get_num('exit_reentry_one_time')), cell_style),
-         Paragraph(format_currency(get_num('exit_reentry_annual')), cell_style),
-         Paragraph(format_currency(get_num('exit_reentry_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("Salary Transfer (Monthly)", cell_style),
-         Paragraph(format_currency(get_num('salary_transfer_one_time')), cell_style),
-         Paragraph(format_currency(get_num('salary_transfer_annual')), cell_style),
-         Paragraph(format_currency(get_num('salary_transfer_monthly')), cell_style),
-         Paragraph("Monthly", cell_style)],
-        [Paragraph("Sick Leave and Public Holiday Cost", cell_style),
-         Paragraph(format_currency(get_num('sick_leave_one_time')), cell_style),
-         Paragraph(format_currency(get_num('sick_leave_annual')), cell_style),
-         Paragraph(format_currency(get_num('sick_leave_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("<b>Total of Employee Cost</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('employee_cost_one_time_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('employee_cost_annual_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('employee_cost_monthly_total'))}</b>", cell_bold_style),
-         Paragraph("", cell_style)],
-    ]
-
-    employee_cost_table = Table(employee_cost_data, colWidths=[60*mm, 25*mm, 25*mm, 25*mm, 45*mm])
-    employee_cost_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (-1, 0), light_gray),
-        ('BACKGROUND', (0, 1), (0, -2), light_gray),
-        ('BACKGROUND', (0, -1), (-1, -1), total_yellow),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (3, -1), 'RIGHT'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
-    elements.append(employee_cost_table)
-    elements.append(Spacer(1, 4*mm))
+    c_one_time, c_annual, c_monthly = create_cost_table(
+        "(C) Employee Cost (Charges in SAR)",
+        section_c_rows,
+        "Employee Cost"
+    )
 
     # ============== (D) FAMILY COST ==============
-    elements.append(create_section_header("(D). Family Cost (Charges in SAR)"))
-
-    family_status = get_val('family_status', 'Single')
-    single_remark = "Single Only" if family_status == "Single" else ""
-
-    family_cost_data = [
-        cost_header,
-        [Paragraph("Annual Medical Insurance for Family", cell_style),
-         Paragraph(format_currency(get_num('family_medical_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_medical_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_medical_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("Annual Flight Tickets for Family", cell_style),
-         Paragraph(format_currency(get_num('family_flight_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_flight_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_flight_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("Exit Re-Entry charges for Family", cell_style),
-         Paragraph(format_currency(get_num('family_exit_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_exit_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_exit_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("Joining Flight Tickets for Family (One Time)", cell_style),
-         Paragraph(format_currency(get_num('family_joining_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_joining_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_joining_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("Visa Cost for Family (One Time)", cell_style),
-         Paragraph(format_currency(get_num('family_visa_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_visa_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_visa_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("Family Levy Cost", cell_style),
-         Paragraph(format_currency(get_num('family_levy_one_time')), cell_style),
-         Paragraph(format_currency(get_num('family_levy_annual')), cell_style),
-         Paragraph(format_currency(get_num('family_levy_monthly')), cell_style),
-         Paragraph(single_remark, cell_style)],
-        [Paragraph("<b>Total of Family Cost</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('family_cost_one_time_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('family_cost_annual_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('family_cost_monthly_total'))}</b>", cell_bold_style),
-         Paragraph("", cell_style)],
+    section_d_rows = [
+        ('family_medical', 'Annual Medical Insurance for Family'),
+        ('family_flight', 'Annual Flight Tickets for Family'),
+        ('family_exit_reentry', 'Exit Re-Entry Charges for Family'),
+        ('family_joining', 'Joining Flight Tickets for Family (One Time)'),
+        ('family_visa', 'Visa Cost for Family (One Time)'),
+        ('family_levy', 'Family Levy Cost'),
     ]
-
-    family_cost_table = Table(family_cost_data, colWidths=[60*mm, 25*mm, 25*mm, 25*mm, 45*mm])
-    family_cost_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (-1, 0), light_gray),
-        ('BACKGROUND', (0, 1), (0, -2), light_gray),
-        ('BACKGROUND', (0, -1), (-1, -1), total_yellow),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (3, -1), 'RIGHT'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
-    elements.append(family_cost_table)
-    elements.append(Spacer(1, 4*mm))
+    d_one_time, d_annual, d_monthly = create_cost_table(
+        "(D) Family Cost (Charges in SAR)",
+        section_d_rows,
+        "Family Cost"
+    )
 
     # ============== (E) GOVERNMENT RELATED CHARGES ==============
-    elements.append(create_section_header("(E). Government Related Charges (In SAR)"))
+    section_e_rows = [
+        ('sce', 'SCE Charges'),
+        ('medical_test', 'Medical Test (Iqama) (One Time)'),
+        ('visa', 'Cost of Visa (One Time)'),
+        ('e_wakala', 'E-Wakala Charge (One Time)'),
+        ('chamber_mofa', 'Chamber & MOFA (One Time)'),
+        ('iqama', 'Yearly Cost of Iqama (Annual)'),
+        ('saudi_admin', 'Saudi Admin Cost'),
+        ('ajeer', 'Ajeer Cost'),
+    ]
+    e_one_time, e_annual, e_monthly = create_cost_table(
+        "(E) Government Related Charges (In SAR)",
+        section_e_rows,
+        "Government Charges"
+    )
 
-    govt_cost_data = [
-        cost_header,
-        [Paragraph("SCE Charges", cell_style),
-         Paragraph(format_currency(get_num('sce_one_time')), cell_style),
-         Paragraph(format_currency(get_num('sce_annual')), cell_style),
-         Paragraph(format_currency(get_num('sce_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("Medical Test (Iqama) (One Time)", cell_style),
-         Paragraph(format_currency(get_num('medical_test_one_time')), cell_style),
-         Paragraph(format_currency(get_num('medical_test_annual')), cell_style),
-         Paragraph(format_currency(get_num('medical_test_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('medical_test', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Cost of Visa (One Time)", cell_style),
-         Paragraph(format_currency(get_num('visa_cost_one_time')), cell_style),
-         Paragraph(format_currency(get_num('visa_cost_annual')), cell_style),
-         Paragraph(format_currency(get_num('visa_cost_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("E-wakala Charge (One Time)", cell_style),
-         Paragraph(format_currency(get_num('ewakala_one_time')), cell_style),
-         Paragraph(format_currency(get_num('ewakala_annual')), cell_style),
-         Paragraph(format_currency(get_num('ewakala_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('ewakala', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Chamber & Mofa (One Time)", cell_style),
-         Paragraph(format_currency(get_num('chamber_mofa_one_time')), cell_style),
-         Paragraph(format_currency(get_num('chamber_mofa_annual')), cell_style),
-         Paragraph(format_currency(get_num('chamber_mofa_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('chamber_mofa', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Yearly Cost of Iqama (Annual)", cell_style),
-         Paragraph(format_currency(get_num('iqama_one_time')), cell_style),
-         Paragraph(format_currency(get_num('iqama_annual')), cell_style),
-         Paragraph(format_currency(get_num('iqama_monthly')), cell_style),
-         Paragraph("As per actuals", cell_style)],
-        [Paragraph("Saudi Admin Cost", cell_style),
-         Paragraph(format_currency(get_num('saudi_admin_one_time')), cell_style),
-         Paragraph(format_currency(get_num('saudi_admin_annual')), cell_style),
-         Paragraph(format_currency(get_num('saudi_admin_monthly')), cell_style),
-         Paragraph("Monthly - Subject to Change", cell_style)],
-        [Paragraph("Ajeer Cost", cell_style),
-         Paragraph(format_currency(get_num('ajeer_one_time')), cell_style),
-         Paragraph(format_currency(get_num('ajeer_annual')), cell_style),
-         Paragraph(format_currency(get_num('ajeer_monthly')), cell_style),
-         Paragraph("Monthly", cell_style)],
-        [Paragraph("<b>Total of Government Related Charges</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('govt_cost_one_time_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('govt_cost_annual_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('govt_cost_monthly_total'))}</b>", cell_bold_style),
-         Paragraph("", cell_style)],
+    # ============== (F) MOBILIZATION COST & SUMMARY ==============
+    elements.append(create_section_header("(F) Mobilization Cost (Charges in SAR) & Summary"))
+
+    mob_header = [
+        Paragraph("<b>Description</b>", header_cell_style),
+        Paragraph("<b>One Time</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+        Paragraph("<b>Annual</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+        Paragraph("<b>Monthly</b>", ParagraphStyle('H', fontSize=7, fontName='Helvetica-Bold', alignment=TA_CENTER)),
+        Paragraph("<b>Remarks / Clarification</b>", header_cell_style),
     ]
 
-    govt_cost_table = Table(govt_cost_data, colWidths=[60*mm, 25*mm, 25*mm, 25*mm, 45*mm])
-    govt_cost_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+    mob_data = [mob_header]
+
+    # Mobilization rows
+    section_f_rows = [
+        ('visa_processing', 'Visa Processing Charges (One Time)'),
+        ('recruitment', 'Recruitment Fee (One Time)'),
+        ('joining_ticket', 'Joining Ticket (One Time)'),
+        ('relocation', 'Relocation Cost (One Time)'),
+        ('other_mobilization', 'Other Cost'),
+    ]
+
+    f_one_time = 0
+    f_annual = 0
+    f_monthly = 0
+
+    for prefix, default_label in section_f_rows:
+        label = get_val(f'{prefix}_label', default_label)
+        one_time = get_num(f'{prefix}_one_time')
+        annual = get_num(f'{prefix}_annual')
+        monthly = get_num(f'{prefix}_monthly')
+        remarks = get_val(f'{prefix}_remarks', '')
+
+        f_one_time += one_time or 0
+        f_annual += annual or 0
+        f_monthly += monthly or 0
+
+        mob_data.append([
+            Paragraph(label, cell_style),
+            Paragraph(format_currency(one_time), cell_right_style),
+            Paragraph(format_currency(annual), cell_right_style),
+            Paragraph(format_currency(monthly), cell_right_style),
+            Paragraph(remarks, cell_style),
+        ])
+
+    # Total Mobilization row
+    mob_data.append([
+        Paragraph("<b>Total of Mobilization Cost</b>", cell_bold_style),
+        Paragraph(f"<b>{format_currency(f_one_time if f_one_time > 0 else None)}</b>", cell_right_bold_style),
+        Paragraph(f"<b>{format_currency(f_annual if f_annual > 0 else None)}</b>", cell_right_bold_style),
+        Paragraph(f"<b>{format_currency(f_monthly if f_monthly > 0 else None)}</b>", cell_right_bold_style),
+        Paragraph("", cell_style),
+    ])
+
+    # Grand Total Cost
+    total_one_time = c_one_time + d_one_time + e_one_time + f_one_time
+    total_annual = c_annual + d_annual + e_annual + f_annual
+    total_monthly = c_monthly + d_monthly + e_monthly + f_monthly
+
+    # Use provided totals if available
+    total_one_time = get_num('total_one_time') or total_one_time
+    total_annual = get_num('total_annual') or total_annual
+    total_monthly = get_num('total_monthly') or total_monthly
+
+    mob_data.append([
+        Paragraph("<b>Total Cost</b>", cell_bold_style),
+        Paragraph(f"<b>{format_currency(total_one_time)}</b>", cell_right_bold_style),
+        Paragraph(f"<b>{format_currency(total_annual)}</b>", cell_right_bold_style),
+        Paragraph(f"<b>{format_currency(total_monthly)}</b>", cell_right_bold_style),
+        Paragraph("", cell_style),
+    ])
+
+    # FNRCO Service Charge
+    fnrco_charge = get_num('fnrco_service_charge', 1250.00)
+    mob_data.append([
+        Paragraph("<b>FNRCO Service Charge</b>", cell_bold_style),
+        Paragraph("-", cell_right_style),
+        Paragraph("-", cell_right_style),
+        Paragraph(f"<b>{format_currency(fnrco_charge)}</b>", cell_right_bold_style),
+        Paragraph("", cell_style),
+    ])
+
+    # Total Invoice Amount
+    total_invoice = get_num('total_invoice_amount') or (total_monthly + (fnrco_charge or 0))
+    mob_data.append([
+        Paragraph("<b>Total Invoice Amount</b>", ParagraphStyle('White', fontSize=8, fontName='Helvetica-Bold', textColor=colors.white)),
+        Paragraph("-", ParagraphStyle('WhiteR', fontSize=7, fontName='Helvetica', textColor=colors.white, alignment=TA_RIGHT)),
+        Paragraph("-", ParagraphStyle('WhiteR', fontSize=7, fontName='Helvetica', textColor=colors.white, alignment=TA_RIGHT)),
+        Paragraph(f"<b>{format_currency(total_invoice)}</b>", ParagraphStyle('WhiteRB', fontSize=10, fontName='Helvetica-Bold', textColor=colors.white, alignment=TA_RIGHT)),
+        Paragraph("", cell_style),
+    ])
+
+    mob_table = Table(mob_data, colWidths=[44.6*mm, 28*mm, 28*mm, 28*mm, 57.6*mm])
+    mob_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
         ('BACKGROUND', (0, 0), (-1, 0), light_gray),
-        ('BACKGROUND', (0, 1), (0, -2), light_gray),
-        ('BACKGROUND', (0, -1), (-1, -1), total_yellow),
+        ('BACKGROUND', (0, len(section_f_rows) + 1), (-1, len(section_f_rows) + 1), orange_bg),  # Mobilization total
+        ('BACKGROUND', (0, len(section_f_rows) + 2), (-1, len(section_f_rows) + 2), colors.HexColor('#fed7aa')),  # Total Cost
+        ('BACKGROUND', (0, -1), (-1, -1), primary_color),  # Total Invoice
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (3, -1), 'RIGHT'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, -1), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 5),
     ]))
-    elements.append(govt_cost_table)
+    elements.append(mob_table)
     elements.append(Spacer(1, 4*mm))
 
-    # ============== (F) MOBILIZATION COST ==============
-    elements.append(create_section_header("(F). Mobilization Cost (Charges in SAR)"))
-
-    mobilization_cost_data = [
-        cost_header,
-        [Paragraph("Visa Processing Charges (One Time)", cell_style),
-         Paragraph(format_currency(get_num('visa_processing_one_time')), cell_style),
-         Paragraph(format_currency(get_num('visa_processing_annual')), cell_style),
-         Paragraph(format_currency(get_num('visa_processing_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('visa_processing', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Recruitment Fee (One Time)", cell_style),
-         Paragraph(format_currency(get_num('recruitment_one_time')), cell_style),
-         Paragraph(format_currency(get_num('recruitment_annual')), cell_style),
-         Paragraph(format_currency(get_num('recruitment_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('recruitment', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Joining Ticket (One Time)", cell_style),
-         Paragraph(format_currency(get_num('joining_ticket_one_time')), cell_style),
-         Paragraph(format_currency(get_num('joining_ticket_annual')), cell_style),
-         Paragraph(format_currency(get_num('joining_ticket_monthly')), cell_style),
-         Paragraph(get_val('remarks_data', {}).get('joining_ticket', 'Not Applicable') if isinstance(get_val('remarks_data', {}), dict) else 'Not Applicable', cell_style)],
-        [Paragraph("Relocation Cost (One Time)", cell_style),
-         Paragraph(format_currency(get_num('relocation_one_time')), cell_style),
-         Paragraph(format_currency(get_num('relocation_annual')), cell_style),
-         Paragraph(format_currency(get_num('relocation_monthly')), cell_style),
-         Paragraph("As per Actuals", cell_style)],
-        [Paragraph("Other Cost", cell_style),
-         Paragraph(format_currency(get_num('other_cost_one_time')), cell_style),
-         Paragraph(format_currency(get_num('other_cost_annual')), cell_style),
-         Paragraph(format_currency(get_num('other_cost_monthly')), cell_style),
-         Paragraph("As per Actuals", cell_style)],
-        [Paragraph("<b>Total of Mobilization Cost</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('mobilization_one_time_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('mobilization_annual_total'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('mobilization_monthly_total'))}</b>", cell_bold_style),
-         Paragraph("", cell_style)],
-    ]
-
-    mobilization_cost_table = Table(mobilization_cost_data, colWidths=[60*mm, 25*mm, 25*mm, 25*mm, 45*mm])
-    mobilization_cost_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (-1, 0), light_gray),
-        ('BACKGROUND', (0, 1), (0, -2), light_gray),
-        ('BACKGROUND', (0, -1), (-1, -1), total_yellow),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 1), (3, -1), 'RIGHT'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
-    elements.append(mobilization_cost_table)
-    elements.append(Spacer(1, 4*mm))
-
-    # ============== GRAND TOTALS ==============
-    grand_total_data = [
-        [Paragraph("<b>Total Cost</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('total_one_time'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('total_annual'))}</b>", cell_bold_style),
-         Paragraph(f"<b>{format_currency(get_num('total_monthly'))}</b>", cell_bold_style),
-         Paragraph("Payroll Benefits + Monthly Cost", cell_style)],
-        [Paragraph("<b>FNRCO Service Charge</b>", cell_bold_style),
-         Paragraph("", cell_style),
-         Paragraph("", cell_style),
-         Paragraph(f"<b>{format_currency(get_num('fnrco_service_charge'))}</b>", cell_bold_style),
-         Paragraph("Per Person Per Month", cell_style)],
-        [Paragraph("<b>Total Invoice Amount</b>", cell_bold_style),
-         Paragraph("", cell_style),
-         Paragraph("", cell_style),
-         Paragraph(f"<b>{format_currency(get_num('total_invoice_amount'))}</b>", cell_bold_style),
-         Paragraph("Monthly", cell_style)],
-    ]
-
-    grand_total_table = Table(grand_total_data, colWidths=[60*mm, 25*mm, 25*mm, 25*mm, 45*mm])
-    grand_total_table.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BACKGROUND', (0, 0), (-1, 0), total_green),
-        ('BACKGROUND', (0, 1), (0, 1), light_gray),
-        ('BACKGROUND', (0, 2), (-1, 2), header_blue),
-        ('TEXTCOLOR', (0, 2), (-1, 2), colors.white),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (3, -1), 'RIGHT'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(grand_total_table)
-
-    # ============== SIGNATURES SECTION ==============
-    elements.append(Spacer(1, 8*mm))
-
-    sig_header_style = ParagraphStyle(
-        'SigHeader',
-        parent=cell_bold_style,
-        fontSize=11,
-        spaceAfter=4
-    )
-
-    signature_style = ParagraphStyle(
-        'Signature',
-        parent=cell_style,
-        fontSize=16,
-        fontName='Helvetica-Oblique',
-        textColor=colors.blue,
-        alignment=TA_LEFT
-    )
-
-    # Get signature data
-    third_party_signature = get_val('quote_sheet_third_party_signature')
-    third_party_name = get_val('quote_sheet_third_party_name')
-    third_party_signed_date = get_val('quote_sheet_third_party_signed_date')
-
-    aventus_signature_type = get_val('quote_sheet_aventus_signature_type')
-    aventus_signature_data = get_val('quote_sheet_aventus_signature_data')
-    aventus_signed_date = get_val('quote_sheet_aventus_signed_date')
-
-    # Two-column signature layout
-    # Left column - Third Party
-    third_party_col = [Paragraph("<b>FOR THIRD PARTY:</b>", sig_header_style), Spacer(1, 2*mm)]
-
-    if third_party_signature:
-        # Display signature (always drawn for third party)
-        try:
-            # Remove data:image/png;base64, prefix if present
-            if third_party_signature.startswith('data:image'):
-                third_party_signature = third_party_signature.split(',')[1]
-            sig_image_data = base64.b64decode(third_party_signature)
-            sig_buffer = BytesIO(sig_image_data)
-            sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
-            third_party_col.append(sig_image)
-        except Exception as e:
-            third_party_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
-
-        third_party_col.extend([
-            Spacer(1, 1*mm),
-            Paragraph(f"Name: {third_party_name or 'N/A'}", cell_style),
-            Spacer(1, 1*mm),
-            Paragraph(f"Date: {third_party_signed_date[:10] if third_party_signed_date else 'N/A'}", cell_style),
-        ])
-    else:
-        third_party_col.extend([
-            Paragraph("Signed: _____________________________", cell_style),
-            Spacer(1, 1*mm),
-            Paragraph("Name: _____________________________", cell_style),
-            Spacer(1, 1*mm),
-            Paragraph("Date: _____________________________", cell_style),
-        ])
-
-    # Right column - Aventus
-    aventus_col = [Paragraph("<b>FOR AVENTUS:</b>", sig_header_style), Spacer(1, 2*mm)]
-
-    if aventus_signature_data:
-        if aventus_signature_type == "drawn":
-            # Display drawn signature as image
-            try:
-                # Remove data:image/png;base64, prefix if present
-                if aventus_signature_data.startswith('data:image'):
-                    aventus_signature_data = aventus_signature_data.split(',')[1]
-                sig_image_data = base64.b64decode(aventus_signature_data)
-                sig_buffer = BytesIO(sig_image_data)
-                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
-                aventus_col.append(sig_image)
-            except Exception as e:
-                aventus_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
-        else:
-            # Display typed signature
-            aventus_col.append(Paragraph(f"<i>{aventus_signature_data}</i>", signature_style))
-
-        aventus_col.extend([
-            Spacer(1, 1*mm),
-            Paragraph(f"Date: {aventus_signed_date[:10] if aventus_signed_date else 'N/A'}", cell_style),
-        ])
-    else:
-        aventus_col.extend([
-            Paragraph("Signed: _____________________________", cell_style),
-            Spacer(1, 1*mm),
-            Paragraph("Name: _____________________________", cell_style),
-            Spacer(1, 1*mm),
-            Paragraph("Date: _____________________________", cell_style),
-        ])
-
-    # Create side-by-side table
-    signature_table = Table([[third_party_col, aventus_col]], colWidths=[85*mm, 85*mm])
-    signature_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(signature_table)
+    # ============== FOOTER ==============
+    first_name = get_val('first_name', '')
+    surname = get_val('surname', '')
+    contractor_name = f"{first_name} {surname}".strip() or get_val('employee_name', '')
+    footer_text = f"{contractor_name} - Cost Estimation Sheet"
+    elements.append(Paragraph(footer_text, ParagraphStyle('Footer', fontSize=7, textColor=colors.HexColor('#9ca3af'))))
 
     # Build PDF
     doc.build(elements)
