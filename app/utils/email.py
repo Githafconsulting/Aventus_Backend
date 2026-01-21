@@ -67,6 +67,45 @@ def _send_email(to: str, subject: str, html: str) -> bool:
         return False
 
 
+def _send_email_with_attachment(to: str, subject: str, html: str, attachment_content: bytes, attachment_filename: str) -> bool:
+    """Send email via Resend with PDF attachment."""
+    import os
+    import base64
+    from dotenv import load_dotenv
+
+    # Force reload environment variables
+    load_dotenv(override=True)
+
+    api_key = os.getenv("RESEND_API_KEY")
+    from_email = os.getenv("FROM_EMAIL")
+
+    if not api_key:
+        print("[EMAIL] ERROR: RESEND_API_KEY not set")
+        return False
+
+    try:
+        resend.api_key = api_key
+
+        params = {
+            "from": from_email,
+            "to": [to] if isinstance(to, str) else to,
+            "subject": subject,
+            "html": html,
+            "attachments": [
+                {
+                    "filename": attachment_filename,
+                    "content": base64.b64encode(attachment_content).decode('utf-8'),
+                }
+            ]
+        }
+
+        resend.Emails.send(params)
+        return True
+    except Exception as e:
+        print(f"[EMAIL] ERROR sending with attachment: {str(e)}")
+        return False
+
+
 # =============================================================================
 # Contract & Onboarding Emails
 # =============================================================================
@@ -395,6 +434,37 @@ def send_quote_sheet_request(
     if email_cc:
         return _send_email_with_cc(third_party_email, email_cc, subject, html)
     return _send_email(third_party_email, subject, html)
+
+
+def send_quote_sheet_pdf_email(
+    third_party_email: str,
+    third_party_name: str,
+    contractor_name: str,
+    pdf_content: bytes,
+    pdf_filename: str,
+    company_name: str = "Aventus"
+) -> bool:
+    """Send quote sheet PDF to third party via email."""
+    html = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #9B1B1B;">Cost Estimation Sheet</h2>
+            <p>Dear {third_party_name or 'Team'},</p>
+            <p>Please find attached the Cost Estimation Sheet for <strong>{contractor_name}</strong>.</p>
+            <p>This document contains the detailed cost breakdown for your review.</p>
+            <p>If you have any questions or require clarification, please don't hesitate to contact us.</p>
+            <br/>
+            <p>Best regards,</p>
+            <p><strong>{company_name} Team</strong></p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;"/>
+            <p style="font-size: 12px; color: #666;">This is an automated email. Please do not reply directly to this message.</p>
+        </div>
+    </body>
+    </html>
+    """
+    subject = f"Cost Estimation Sheet - {contractor_name}"
+    return _send_email_with_attachment(third_party_email, subject, html, pdf_content, pdf_filename)
 
 
 def _send_email_with_cc(to: str, cc: str, subject: str, html: str) -> bool:

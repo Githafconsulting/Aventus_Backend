@@ -4114,7 +4114,7 @@ async def send_quote_sheet_email(
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
 ):
     """
-    Send Quote Sheet to a third party via email
+    Send Quote Sheet to a third party via email with PDF attachment
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -4144,13 +4144,69 @@ async def send_quote_sheet_email(
     db.commit()
     db.refresh(contractor)
 
-    # TODO: Implement actual email sending here
-    # For now, just return success
+    # Generate PDF for attachment
+    contractor_data = {
+        "id": str(contractor.id),
+        "first_name": contractor.first_name,
+        "surname": contractor.surname,
+        "email": contractor.email,
+        "phone": contractor.phone,
+        "nationality": contractor.nationality,
+        "dob": contractor.dob,
+        "current_location": contractor.current_location,
+        "client_name": contractor.client_name,
+        "role": contractor.role,
+        "location": contractor.location,
+        "start_date": contractor.start_date,
+        "end_date": contractor.end_date,
+        "duration": contractor.duration,
+    }
+
+    # Parse Quote Sheet data
+    quote_sheet_data = {}
+    if contractor.quote_sheet_data:
+        if isinstance(contractor.quote_sheet_data, str):
+            try:
+                quote_sheet_data = json.loads(contractor.quote_sheet_data)
+            except:
+                quote_sheet_data = {}
+        elif isinstance(contractor.quote_sheet_data, dict):
+            quote_sheet_data = contractor.quote_sheet_data
+
+    # Merge contractor data with quote sheet data
+    pdf_data = {**contractor_data, **quote_sheet_data}
+
+    # Generate PDF
+    pdf_buffer = generate_quote_sheet_pdf(pdf_data)
+    pdf_content = pdf_buffer.getvalue()
+
+    # Create filename
+    contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+    pdf_filename = f"QuoteSheet_{contractor_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    # Send email with PDF attachment
+    from app.utils.email import send_quote_sheet_pdf_email
+
+    email_sent = send_quote_sheet_pdf_email(
+        third_party_email=third_party_email,
+        third_party_name=third_party_company,
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
+        pdf_content=pdf_content,
+        pdf_filename=pdf_filename,
+        company_name="FNRCO"
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send email. Please check email configuration."
+        )
 
     return {
         "message": f"Quote Sheet sent to {third_party_email}",
         "contractor_id": contractor_id,
-        "quote_sheet_status": contractor.quote_sheet_status
+        "quote_sheet_status": contractor.quote_sheet_status,
+        "email_sent": True
     }
 
 
