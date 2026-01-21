@@ -177,10 +177,16 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
 
     # Try default logo path if no logo loaded
     if logo_element is None:
+        # Get the directory where this script is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        app_dir = os.path.dirname(current_dir)  # app directory
+
         default_logo_paths = [
+            os.path.join(app_dir, 'static', 'fnrco-logo.png'),
+            os.path.join(current_dir, 'static', 'fnrco-logo.png'),
             '/app/static/fnrco-logo.png',
             'static/fnrco-logo.png',
-            '../static/fnrco-logo.png',
+            'app/static/fnrco-logo.png',
         ]
         for path in default_logo_paths:
             if os.path.exists(path):
