@@ -22,7 +22,9 @@
       "Bash(netstat:*)",
       "Bash(curl:*)",
       "Bash(git commit:*)",
-      "WebFetch(domain:docs.google.com)"
+      "WebFetch(domain:docs.google.com)",
+      "Bash(git show:*)",
+      "Bash(app/dashboard/contractors/[id]/page.tsx)"
     ],
     "deny": [],
     "ask": []

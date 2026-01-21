@@ -4304,6 +4304,10 @@ async def submit_quote_sheet(
     contractor.quote_sheet_third_party_signature = third_party_signature
     contractor.quote_sheet_third_party_signed_date = datetime.now(timezone.utc)
 
+    # Update main contractor status to next step (Saudi route: Quote received, move to CDS/CS)
+    if contractor.status == ContractorStatus.PENDING_THIRD_PARTY_QUOTE:
+        contractor.status = ContractorStatus.PENDING_CDS_CS
+
     # Clear the token after successful submission (one-time use)
     contractor.quote_sheet_token = None
     contractor.quote_sheet_token_expiry = None
