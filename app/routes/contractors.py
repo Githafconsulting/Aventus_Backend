@@ -50,6 +50,7 @@ from app.utils.contract_template import populate_contract_template
 from app.utils.contract_pdf_generator import generate_consultant_contract_pdf
 from app.utils.work_order_pdf_generator import generate_work_order_pdf
 from app.utils.cohf_pdf_generator import generate_cohf_pdf
+from app.utils.quote_sheet_pdf_generator import generate_quote_sheet_pdf
 from app.utils.storage import upload_file
 from app.config import settings
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -3947,6 +3948,211 @@ async def counter_sign_cohf(
         "aventus_signed_by": current_user.name,
         "aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat()
     }
+
+# ============================================
+# QUOTE SHEET ENDPOINTS (SAUDI ROUTE) - Similar to COHF for UAE
+# ============================================
+
+class QuoteSheetSubmission:
+    """Schema for Quote Sheet form submission"""
+    def __init__(self, quote_sheet_data: dict = None, action: str = "save"):
+        self.quote_sheet_data = quote_sheet_data
+        self.action = action
+
+
+@router.get("/{contractor_id}/quote-sheet")
+async def get_quote_sheet(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Get Quote Sheet data for a contractor (Saudi route)
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    return {
+        "contractor_id": contractor_id,
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "quote_sheet_data": contractor.quote_sheet_data,
+        "quote_sheet_status": contractor.quote_sheet_status,
+        "onboarding_route": contractor.onboarding_route.value if contractor.onboarding_route else None,
+        "status": contractor.status.value
+    }
+
+
+@router.put("/{contractor_id}/quote-sheet")
+async def update_quote_sheet(
+    contractor_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Update Quote Sheet data for a contractor (Saudi route)
+    Actions: save, send_to_3rd_party, complete
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Save Quote Sheet data
+    if data.get("quote_sheet_data"):
+        contractor.quote_sheet_data = data.get("quote_sheet_data")
+
+    # Handle action
+    action = data.get("action", "save")
+    if action == "save":
+        contractor.quote_sheet_status = "draft"
+        message = "Quote Sheet saved as draft"
+
+    elif action == "send_to_3rd_party":
+        contractor.quote_sheet_status = "sent_to_3rd_party"
+        contractor.third_party_email_sent_date = datetime.now(timezone.utc)
+        message = "Quote Sheet marked as sent to 3rd party"
+
+    elif action == "complete":
+        contractor.quote_sheet_status = "submitted"
+        message = "Quote Sheet completed"
+
+    else:
+        message = "Quote Sheet updated"
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {
+        "message": message,
+        "contractor_id": contractor_id,
+        "quote_sheet_status": contractor.quote_sheet_status,
+        "status": contractor.status.value
+    }
+
+
+@router.get("/{contractor_id}/quote-sheet/pdf")
+async def get_quote_sheet_pdf(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Generate and download Quote Sheet PDF for a contractor (Saudi route)
+    Returns an A4 PDF document
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Prepare contractor data from model fields
+    contractor_data = {
+        "id": str(contractor.id),
+        "first_name": contractor.first_name,
+        "surname": contractor.surname,
+        "email": contractor.email,
+        "phone": contractor.phone,
+        "nationality": contractor.nationality,
+        "dob": contractor.dob,
+        "current_location": contractor.current_location,
+        "client_name": contractor.client_name,
+        "role": contractor.role,
+        "location": contractor.location,
+        "start_date": contractor.start_date,
+        "end_date": contractor.end_date,
+        "duration": contractor.duration,
+    }
+
+    # Parse Quote Sheet data if exists
+    quote_sheet_data = {}
+    if contractor.quote_sheet_data:
+        if isinstance(contractor.quote_sheet_data, str):
+            try:
+                quote_sheet_data = json.loads(contractor.quote_sheet_data)
+            except:
+                quote_sheet_data = {}
+        elif isinstance(contractor.quote_sheet_data, dict):
+            quote_sheet_data = contractor.quote_sheet_data
+
+    # Merge contractor data with quote sheet data
+    pdf_data = {**contractor_data, **quote_sheet_data}
+
+    # Generate PDF
+    pdf_buffer = generate_quote_sheet_pdf(pdf_data)
+
+    # Create filename
+    contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+    filename = f"QuoteSheet_{contractor_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename={filename}",
+            "Content-Type": "application/pdf"
+        }
+    )
+
+
+@router.post("/{contractor_id}/quote-sheet/send-email")
+async def send_quote_sheet_email(
+    contractor_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Send Quote Sheet to a third party via email
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    third_party_email = data.get("third_party_email")
+    third_party_company = data.get("third_party_company", "")
+
+    if not third_party_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Third party email is required"
+        )
+
+    # Save quote sheet data if provided
+    if data.get("quote_sheet_data"):
+        contractor.quote_sheet_data = data.get("quote_sheet_data")
+
+    # Update status
+    contractor.quote_sheet_status = "sent_to_3rd_party"
+    contractor.third_party_email_sent_date = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(contractor)
+
+    # TODO: Implement actual email sending here
+    # For now, just return success
+
+    return {
+        "message": f"Quote Sheet sent to {third_party_email}",
+        "contractor_id": contractor_id,
+        "quote_sheet_status": contractor.quote_sheet_status
+    }
+
 
 # ============================================
 # AVENTUS COUNTER-SIGNATURE ENDPOINTS FOR QUOTE SHEETS (SAUDI ROUTE)

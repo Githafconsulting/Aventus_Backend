@@ -74,6 +74,10 @@ class Contractor(Base):
     third_party_response_received_date = Column(DateTime(timezone=True), nullable=True)
     third_party_document = Column(String, nullable=True)  # Path to uploaded 3rd party document
 
+    # Quote Sheet Data (Saudi Route) - similar to COHF for UAE
+    quote_sheet_data = Column(JSON, nullable=True)  # Quote Sheet form data
+    quote_sheet_status = Column(String, nullable=True)  # draft, sent_to_3rd_party, submitted
+
     # Third Party Quote Sheet Signatures
     quote_sheet_third_party_signature = Column(Text, nullable=True)  # Third party signature data
     quote_sheet_third_party_name = Column(String, nullable=True)  # Name of third party signer
