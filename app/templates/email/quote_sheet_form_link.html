@@ -1,0 +1,77 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Hello, {{ third_party_name | default('Team') }}!</h2>
+
+<p class="intro-text">
+    You have been requested to complete a <strong>Cost Estimation Sheet</strong> for the contractor listed below. Please review and fill in the required information.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📋</div>
+    <div class="document-title">Cost Estimation Sheet</div>
+    <p class="document-desc">
+        Please complete the cost estimation details for <strong>{{ contractor_name }}</strong>
+    </p>
+</div>
+
+{% if contractor_name or role or location or client_name %}
+<div class="credentials">
+    <div class="credentials-title">Contractor Details</div>
+    {% if contractor_name %}
+    <div class="cred-row">
+        <span class="cred-label">Contractor Name</span>
+        <span class="cred-value">{{ contractor_name }}</span>
+    </div>
+    {% endif %}
+    {% if role %}
+    <div class="cred-row">
+        <span class="cred-label">Role / Position</span>
+        <span class="cred-value">{{ role }}</span>
+    </div>
+    {% endif %}
+    {% if location %}
+    <div class="cred-row">
+        <span class="cred-label">Location</span>
+        <span class="cred-value">{{ location }}</span>
+    </div>
+    {% endif %}
+    {% if client_name %}
+    <div class="cred-row">
+        <span class="cred-label">Client</span>
+        <span class="cred-value">{{ client_name }}</span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="cta-container">
+    <a href="{{ form_link }}" class="cta-button">Complete Cost Estimation Form</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Request</strong>
+    <p>This link will expire on <strong>{{ expiry_date }}</strong>. Please complete and submit the form before the deadline.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>What You Need to Do</strong>
+    <p>Click the button above to access the form, fill in all required cost details, review your entries, and click Submit when complete.</p>
+</div>
+
+<p class="intro-text">
+    If you have any questions or need assistance, please contact our team.
+</p>
+
+<p class="intro-text text-muted" style="font-size: 12px; word-break: break-all;">
+    If the button doesn't work, copy and paste this link into your browser:<br>
+    <a href="{{ form_link }}" style="color: #FF6B00;">{{ form_link }}</a>
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

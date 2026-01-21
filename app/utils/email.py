@@ -436,6 +436,31 @@ def send_quote_sheet_request(
     return _send_email(third_party_email, subject, html)
 
 
+def send_quote_sheet_form_link(
+    third_party_email: str,
+    third_party_name: str,
+    contractor_name: str,
+    form_link: str,
+    expiry_date: datetime,
+    role: Optional[str] = None,
+    location: Optional[str] = None,
+    client_name: Optional[str] = None
+) -> bool:
+    """Send quote sheet form link to third party to fill and submit."""
+    html = _render_template(
+        "quote_sheet_form_link",
+        third_party_name=third_party_name,
+        contractor_name=contractor_name,
+        form_link=form_link,
+        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        role=role,
+        location=location,
+        client_name=client_name,
+    )
+    subject = f"Cost Estimation Sheet - Action Required - {contractor_name}"
+    return _send_email(third_party_email, subject, html)
+
+
 def send_quote_sheet_pdf_email(
     third_party_email: str,
     third_party_name: str,

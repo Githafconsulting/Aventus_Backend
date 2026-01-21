@@ -4114,8 +4114,11 @@ async def send_quote_sheet_email(
     current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
 ):
     """
-    Send Quote Sheet to a third party via email with PDF attachment
+    Send Quote Sheet form link to a third party via email.
+    The third party can click the link, fill the form, and submit.
     """
+    import secrets
+
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
     if not contractor:
@@ -4137,6 +4140,14 @@ async def send_quote_sheet_email(
     if data.get("quote_sheet_data"):
         contractor.quote_sheet_data = data.get("quote_sheet_data")
 
+    # Generate unique token for the form link
+    token = secrets.token_urlsafe(32)
+    expiry_date = datetime.now(timezone.utc) + timedelta(days=7)  # 7 days expiry
+
+    # Save token to contractor
+    contractor.quote_sheet_token = token
+    contractor.quote_sheet_token_expiry = expiry_date
+
     # Update status
     contractor.quote_sheet_status = "sent_to_3rd_party"
     contractor.third_party_email_sent_date = datetime.now(timezone.utc)
@@ -4144,25 +4155,75 @@ async def send_quote_sheet_email(
     db.commit()
     db.refresh(contractor)
 
-    # Generate PDF for attachment
-    contractor_data = {
-        "id": str(contractor.id),
-        "first_name": contractor.first_name,
-        "surname": contractor.surname,
-        "email": contractor.email,
-        "phone": contractor.phone,
-        "nationality": contractor.nationality,
-        "dob": contractor.dob,
-        "current_location": contractor.current_location,
-        "client_name": contractor.client_name,
-        "role": contractor.role,
-        "location": contractor.location,
-        "start_date": contractor.start_date,
-        "end_date": contractor.end_date,
-        "duration": contractor.duration,
+    # Generate form link
+    form_link = f"{settings.frontend_url}/quote-sheet/form/{token}"
+
+    # Send email with form link
+    from app.utils.email import send_quote_sheet_form_link
+
+    email_sent = send_quote_sheet_form_link(
+        third_party_email=third_party_email,
+        third_party_name=third_party_company,
+        contractor_name=f"{contractor.first_name} {contractor.surname}",
+        form_link=form_link,
+        expiry_date=expiry_date,
+        role=contractor.role,
+        location=contractor.location,
+        client_name=contractor.client_name
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send email. Please check email configuration."
+        )
+
+    return {
+        "message": f"Quote Sheet form link sent to {third_party_email}",
+        "contractor_id": contractor_id,
+        "quote_sheet_status": contractor.quote_sheet_status,
+        "email_sent": True,
+        "form_link": form_link,
+        "token_expiry": expiry_date.isoformat()
     }
 
-    # Parse Quote Sheet data
+
+# ============================================
+# PUBLIC QUOTE SHEET ENDPOINTS (FOR THIRD PARTY ACCESS)
+# ============================================
+
+@router.get("/public/quote-sheet/{token}")
+async def get_quote_sheet_by_token(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get Quote Sheet form data by token (public endpoint for third parties).
+    Returns contractor data and current quote sheet form data.
+    """
+    contractor = db.query(Contractor).filter(Contractor.quote_sheet_token == token).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired token"
+        )
+
+    # Check token expiry
+    if contractor.quote_sheet_token_expiry and contractor.quote_sheet_token_expiry < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token has expired. Please request a new link."
+        )
+
+    # Check if already submitted
+    if contractor.quote_sheet_status == "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This quote sheet has already been submitted."
+        )
+
+    # Parse quote sheet data
     quote_sheet_data = {}
     if contractor.quote_sheet_data:
         if isinstance(contractor.quote_sheet_data, str):
@@ -4173,40 +4234,80 @@ async def send_quote_sheet_email(
         elif isinstance(contractor.quote_sheet_data, dict):
             quote_sheet_data = contractor.quote_sheet_data
 
-    # Merge contractor data with quote sheet data
-    pdf_data = {**contractor_data, **quote_sheet_data}
+    return {
+        "contractor_id": str(contractor.id),
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
+        "client_name": contractor.client_name,
+        "role": contractor.role,
+        "location": contractor.location,
+        "nationality": contractor.nationality,
+        "email": contractor.email,
+        "phone": contractor.phone,
+        "start_date": contractor.start_date.isoformat() if contractor.start_date else None,
+        "end_date": contractor.end_date.isoformat() if contractor.end_date else None,
+        "duration": contractor.duration,
+        "quote_sheet_data": quote_sheet_data,
+        "quote_sheet_status": contractor.quote_sheet_status
+    }
 
-    # Generate PDF
-    pdf_buffer = generate_quote_sheet_pdf(pdf_data)
-    pdf_content = pdf_buffer.getvalue()
 
-    # Create filename
-    contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
-    pdf_filename = f"QuoteSheet_{contractor_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+@router.post("/public/quote-sheet/{token}/submit")
+async def submit_quote_sheet(
+    token: str,
+    data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Submit Quote Sheet form (public endpoint for third parties).
+    Third party fills the form and submits.
+    """
+    contractor = db.query(Contractor).filter(Contractor.quote_sheet_token == token).first()
 
-    # Send email with PDF attachment
-    from app.utils.email import send_quote_sheet_pdf_email
-
-    email_sent = send_quote_sheet_pdf_email(
-        third_party_email=third_party_email,
-        third_party_name=third_party_company,
-        contractor_name=f"{contractor.first_name} {contractor.surname}",
-        pdf_content=pdf_content,
-        pdf_filename=pdf_filename,
-        company_name="FNRCO"
-    )
-
-    if not email_sent:
+    if not contractor:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send email. Please check email configuration."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired token"
         )
 
+    # Check token expiry
+    if contractor.quote_sheet_token_expiry and contractor.quote_sheet_token_expiry < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token has expired. Please request a new link."
+        )
+
+    # Check if already submitted
+    if contractor.quote_sheet_status == "submitted":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This quote sheet has already been submitted."
+        )
+
+    # Get submitted data
+    quote_sheet_data = data.get("quote_sheet_data", {})
+    third_party_name = data.get("third_party_name", "")
+    third_party_signature = data.get("signature", "")
+
+    # Update contractor with submitted data
+    contractor.quote_sheet_data = quote_sheet_data
+    contractor.quote_sheet_status = "submitted"
+    contractor.quote_sheet_third_party_name = third_party_name
+    contractor.quote_sheet_third_party_signature = third_party_signature
+    contractor.quote_sheet_third_party_signed_date = datetime.now(timezone.utc)
+
+    # Clear the token after successful submission (one-time use)
+    contractor.quote_sheet_token = None
+    contractor.quote_sheet_token_expiry = None
+
+    db.commit()
+    db.refresh(contractor)
+
     return {
-        "message": f"Quote Sheet sent to {third_party_email}",
-        "contractor_id": contractor_id,
+        "message": "Quote sheet submitted successfully",
+        "contractor_id": str(contractor.id),
+        "contractor_name": f"{contractor.first_name} {contractor.surname}",
         "quote_sheet_status": contractor.quote_sheet_status,
-        "email_sent": True
+        "submitted_date": contractor.quote_sheet_third_party_signed_date.isoformat()
     }
 
 

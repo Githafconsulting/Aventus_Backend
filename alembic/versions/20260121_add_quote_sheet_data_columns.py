@@ -1,4 +1,4 @@
-"""Add quote_sheet_data and quote_sheet_status columns to contractors
+"""Add quote_sheet_data, quote_sheet_status, and token columns to contractors
 
 Revision ID: add_quote_sheet_data
 Revises: 20260118_0001_add_payslips_invoices_tables
@@ -18,12 +18,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add quote_sheet_data and quote_sheet_status columns to contractors table."""
+    """Add quote_sheet columns to contractors table."""
     op.add_column('contractors', sa.Column('quote_sheet_data', sa.JSON(), nullable=True))
     op.add_column('contractors', sa.Column('quote_sheet_status', sa.String(), nullable=True))
+    op.add_column('contractors', sa.Column('quote_sheet_token', sa.String(), nullable=True, unique=True, index=True))
+    op.add_column('contractors', sa.Column('quote_sheet_token_expiry', sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:
-    """Remove quote_sheet_data and quote_sheet_status columns from contractors table."""
+    """Remove quote_sheet columns from contractors table."""
+    op.drop_column('contractors', 'quote_sheet_token_expiry')
+    op.drop_column('contractors', 'quote_sheet_token')
     op.drop_column('contractors', 'quote_sheet_status')
     op.drop_column('contractors', 'quote_sheet_data')

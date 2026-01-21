@@ -90,6 +90,7 @@ async def get_quote_sheet_by_token(
 ):
     """
     Get quote sheet details by token (public endpoint for third parties)
+    Returns contractor data for pre-population of the form
     """
     quote_sheet = db.query(QuoteSheet).filter(QuoteSheet.upload_token == token).first()
 
@@ -106,12 +107,26 @@ async def get_quote_sheet_by_token(
             detail="Upload token has expired"
         )
 
+    # Get contractor data for pre-population
+    contractor = quote_sheet.contractor
+    contractor_data = {}
+    if contractor:
+        contractor_data = {
+            "employee_name": contractor.full_name,
+            "role": contractor.role,
+            "date_of_hiring": contractor.start_date,
+            "nationality": contractor.nationality,
+            "family_status": contractor.family_status or "Single",
+            "num_children": str(contractor.num_children or 0),
+        }
+
     return {
         "contractor_name": quote_sheet.contractor_name,
         "third_party_company_name": quote_sheet.third_party_company_name,
         "status": quote_sheet.status,
         "created_at": quote_sheet.created_at,
-        "token_expiry": quote_sheet.token_expiry
+        "token_expiry": quote_sheet.token_expiry,
+        "contractor_data": contractor_data
     }
 
 

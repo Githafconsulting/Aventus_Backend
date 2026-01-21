@@ -77,6 +77,8 @@ class Contractor(Base):
     # Quote Sheet Data (Saudi Route) - similar to COHF for UAE
     quote_sheet_data = Column(JSON, nullable=True)  # Quote Sheet form data
     quote_sheet_status = Column(String, nullable=True)  # draft, sent_to_3rd_party, submitted
+    quote_sheet_token = Column(String, unique=True, nullable=True, index=True)  # Token for 3rd party to access
+    quote_sheet_token_expiry = Column(DateTime(timezone=True), nullable=True)
 
     # Third Party Quote Sheet Signatures
     quote_sheet_third_party_signature = Column(Text, nullable=True)  # Third party signature data
