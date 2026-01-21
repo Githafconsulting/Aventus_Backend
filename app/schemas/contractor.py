@@ -224,6 +224,11 @@ class ContractorResponse(BaseModel):
     # Onboarding route
     onboarding_route: Optional[str] = None
 
+    # Quote sheet fields (Saudi route)
+    quote_sheet_status: Optional[str] = None
+    quote_sheet_data: Optional[Dict[str, Any]] = None
+    quote_sheet_third_party_name: Optional[str] = None
+
     class Config:
         from_attributes = True
 
