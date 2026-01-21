@@ -144,20 +144,75 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         leading=9,
     )
 
-    # ============== HEADER ==============
+    # ============== HEADER WITH LOGO ==============
+    # Try to load logo
+    logo_element = None
+    logo_url = get_val('logo_url', '')
+
+    # Try to load logo from URL or local file
+    if logo_url:
+        try:
+            if logo_url.startswith('data:image'):
+                # Base64 encoded image
+                import re
+                match = re.match(r'data:image/(\w+);base64,(.+)', logo_url)
+                if match:
+                    img_data = base64.b64decode(match.group(2))
+                    img_buffer = BytesIO(img_data)
+                    logo_element = Image(img_buffer, width=25*mm, height=15*mm)
+            elif logo_url.startswith('http'):
+                # URL - try to fetch
+                import urllib.request
+                with urllib.request.urlopen(logo_url, timeout=5) as response:
+                    img_data = response.read()
+                    img_buffer = BytesIO(img_data)
+                    logo_element = Image(img_buffer, width=25*mm, height=15*mm)
+            else:
+                # Local file path
+                if os.path.exists(logo_url):
+                    logo_element = Image(logo_url, width=25*mm, height=15*mm)
+        except Exception as e:
+            print(f"Error loading logo: {e}")
+            logo_element = None
+
+    # Try default logo path if no logo loaded
+    if logo_element is None:
+        default_logo_paths = [
+            '/app/static/fnrco-logo.png',
+            'static/fnrco-logo.png',
+            '../static/fnrco-logo.png',
+        ]
+        for path in default_logo_paths:
+            if os.path.exists(path):
+                try:
+                    logo_element = Image(path, width=25*mm, height=15*mm)
+                    break
+                except:
+                    pass
+
     # Company name on right
     company_name = get_val('to_company_name', 'FNRCO')
     company_address = get_val('to_company_address', 'Riyadh, Saudi Arabia')
 
-    header_data = [
-        [
-            Paragraph("", cell_style),
-            Paragraph(f"<b>{company_name}</b><br/>{company_address}", ParagraphStyle('Right', fontSize=8, alignment=TA_RIGHT, textColor=dark_gray))
+    # Build header with or without logo
+    if logo_element:
+        header_data = [
+            [
+                logo_element,
+                Paragraph(f"<b>{company_name}</b><br/>{company_address}", ParagraphStyle('Right', fontSize=8, alignment=TA_RIGHT, textColor=dark_gray))
+            ]
         ]
-    ]
-    header_table = Table(header_data, colWidths=[120*mm, 60*mm])
+    else:
+        header_data = [
+            [
+                Paragraph("", cell_style),
+                Paragraph(f"<b>{company_name}</b><br/>{company_address}", ParagraphStyle('Right', fontSize=8, alignment=TA_RIGHT, textColor=dark_gray))
+            ]
+        ]
+
+    header_table = Table(header_data, colWidths=[120*mm, 66*mm])
     header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LINEBELOW', (0, 0), (-1, 0), 1.5, primary_color),
     ]))
     elements.append(header_table)
