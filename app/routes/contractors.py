@@ -2252,6 +2252,15 @@ async def get_contractor_documents(
                 "uploaded_date": contractor.cohf_completed_date
             })
 
+    # Add submitted quote sheet (Saudi route) if available
+    if contractor.quote_sheet_status == "submitted" and contractor.quote_sheet_data:
+        documents.append({
+            "document_name": f"Cost Estimation Sheet - Submitted by {contractor.quote_sheet_third_party_name or 'Third Party'}",
+            "document_type": "quote_sheet",
+            "document_url": f"/api/v1/contractors/{contractor.id}/quote-sheet/pdf",
+            "uploaded_date": contractor.quote_sheet_third_party_signed_date
+        })
+
     # Add signed contract if available
     if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE]:
         documents.append({
