@@ -2843,8 +2843,8 @@ async def send_contract_to_contractor(
     """
     Send contractor's contract for signature.
 
-    For WPS/Freelancer/Offshore routes: Can send after APPROVED status (Aventus generates contract)
-    For UAE/Saudi routes: Must be WORK_ORDER_COMPLETED (client uploads contract)
+    For all routes: Can send after APPROVED status
+    Work Order is optional and runs in parallel - doesn't block contract flow
     """
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
@@ -2854,24 +2854,19 @@ async def send_contract_to_contractor(
             detail="Contractor not found"
         )
 
-    # Routes where Aventus generates the contract (no work order needed)
-    aventus_contract_routes = [OnboardingRoute.WPS, OnboardingRoute.FREELANCER, OnboardingRoute.OFFSHORE]
+    # All routes: Can send contract after approval (Work Order is optional/parallel)
+    # Allow APPROVED, WORK_ORDER_COMPLETED, or PENDING_CLIENT_WO_SIGNATURE statuses
+    allowed_statuses = [
+        ContractorStatus.APPROVED,
+        ContractorStatus.PENDING_CLIENT_WO_SIGNATURE,
+        ContractorStatus.WORK_ORDER_COMPLETED
+    ]
 
-    # Check status based on route
-    if contractor.onboarding_route in aventus_contract_routes:
-        # WPS/Freelancer/Offshore: Can send after approval
-        if contractor.status != ContractorStatus.APPROVED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Contractor must be approved before sending contract. Current status: {contractor.status.value}"
-            )
-    else:
-        # UAE/Saudi: Must have work order completed (client uploads contract)
-        if contractor.status != ContractorStatus.WORK_ORDER_COMPLETED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Work order must be completed before sending contract. Current status: {contractor.status.value}"
-            )
+    if contractor.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Contractor must be approved before sending contract. Current status: {contractor.status.value}"
+        )
 
     # Generate contract token
     contract_token = generate_unique_token()
@@ -3276,8 +3271,9 @@ async def get_cohf_pdf(
             detail="Contractor not found"
         )
 
-    # If signed COHF document exists, redirect to it
-    if contractor.cohf_signed_document:
+    # If fully signed COHF document exists (with counter-signature), redirect to it
+    # Only redirect if admin has counter-signed (cohf_aventus_signed_date exists)
+    if contractor.cohf_signed_document and contractor.cohf_aventus_signed_date:
         return RedirectResponse(url=contractor.cohf_signed_document)
 
     # For unsigned COHF, validate contractor is on UAE route
@@ -3303,6 +3299,10 @@ async def get_cohf_pdf(
         "start_date": contractor.start_date,
         "end_date": contractor.end_date,
         "duration": contractor.duration,
+        # Counter-signature data (Aventus admin)
+        "cohf_aventus_signature_type": contractor.cohf_aventus_signature_type,
+        "cohf_aventus_signature_data": contractor.cohf_aventus_signature_data,
+        "cohf_aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat() if contractor.cohf_aventus_signed_date else None,
     }
 
     # Parse COHF data if exists
@@ -3947,6 +3947,68 @@ async def counter_sign_cohf(
     contractor.cohf_aventus_signature_data = signature_data.get("signature_data")
     contractor.cohf_aventus_signed_date = datetime.now(timezone.utc)
     contractor.cohf_aventus_signed_by = current_user.id
+    contractor.cohf_status = "counter_signed"
+
+    # Update main status to pending CDS/CS
+    if contractor.status == ContractorStatus.COHF_COMPLETED:
+        contractor.status = ContractorStatus.PENDING_CDS_CS
+
+    # Generate and save the fully signed PDF with both signatures
+    try:
+        # Prepare contractor data for PDF generation
+        contractor_data = {
+            "id": str(contractor.id),
+            "first_name": contractor.first_name,
+            "surname": contractor.surname,
+            "email": contractor.email,
+            "phone": contractor.phone,
+            "nationality": contractor.nationality,
+            "dob": contractor.dob,
+            "current_location": contractor.current_location,
+            "client_name": contractor.client_name,
+            "role": contractor.role,
+            "location": contractor.location,
+            "start_date": contractor.start_date,
+            "end_date": contractor.end_date,
+            "duration": contractor.duration,
+            # Counter-signature data (Aventus admin)
+            "cohf_aventus_signature_type": contractor.cohf_aventus_signature_type,
+            "cohf_aventus_signature_data": contractor.cohf_aventus_signature_data,
+            "cohf_aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat() if contractor.cohf_aventus_signed_date else None,
+        }
+
+        # Parse COHF data
+        cohf_data = {}
+        if contractor.cohf_data:
+            if isinstance(contractor.cohf_data, str):
+                try:
+                    cohf_data = json.loads(contractor.cohf_data)
+                except:
+                    cohf_data = {}
+            elif isinstance(contractor.cohf_data, dict):
+                cohf_data = contractor.cohf_data
+
+        # Add third party signature info to cohf_data for PDF
+        cohf_data["third_party_signer_name"] = contractor.cohf_third_party_name
+        cohf_data["third_party_signature"] = contractor.cohf_third_party_signature
+        cohf_data["third_party_signature_type"] = "drawn" if contractor.cohf_third_party_signature and contractor.cohf_third_party_signature.startswith("data:") else "typed"
+
+        # Generate the fully signed PDF
+        pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
+
+        # Upload to storage
+        contractor_name = f"{contractor.first_name}_{contractor.surname}".replace(" ", "_")
+        filename = f"COHF_{contractor_name}_fully_signed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        folder = f"contractor-documents/{contractor.id}"
+
+        pdf_url = upload_file(pdf_buffer, filename, folder)
+
+        # Update the signed document URL with the fully signed version
+        contractor.cohf_signed_document = pdf_url
+
+    except Exception as e:
+        print(f"Error generating/uploading fully signed COHF PDF: {e}")
+        # Continue even if PDF generation fails - the signature is still saved
 
     db.commit()
     db.refresh(contractor)
@@ -3955,7 +4017,8 @@ async def counter_sign_cohf(
         "message": "COHF counter-signed successfully by Aventus",
         "contractor_id": contractor_id,
         "aventus_signed_by": current_user.name,
-        "aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat()
+        "aventus_signed_date": contractor.cohf_aventus_signed_date.isoformat(),
+        "signed_document_url": contractor.cohf_signed_document
     }
 
 # ============================================
