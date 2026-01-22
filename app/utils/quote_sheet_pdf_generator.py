@@ -74,6 +74,15 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         if val is None or val == "":
             return default
         try:
+            # Handle comma-formatted strings and SAR text
+            if isinstance(val, str):
+                # Remove SAR text and any non-numeric chars except dots and commas
+                cleaned = val.replace("SAR", "").replace("sar", "").replace(",", "").strip()
+                # Remove any remaining non-numeric chars except dots
+                cleaned = ''.join(c for c in cleaned if c.isdigit() or c == '.')
+                if cleaned == "":
+                    return default
+                return float(cleaned)
             return float(val)
         except (ValueError, TypeError):
             return default
@@ -385,8 +394,8 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
 
-    # Section D - Salary Details
-    section_d_header = create_section_header_cell("D. SALARY DETAILS", 93*mm)
+    # Section D - Salary Details (SAR)
+    section_d_header = create_section_header_cell("D. SALARY DETAILS (SAR)", 93*mm)
     section_d_header.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), primary_color),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
@@ -406,14 +415,14 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     total_salary = basic_salary + housing_allowance + transportation_allowance + food_allowance + mobile_allowance + fixed_ot + other_allowance
 
     section_d_data = [
-        [Paragraph("<b>Basic Salary</b>", label_style), Paragraph(f"SAR {format_currency(get_num('basic_salary'))}", cell_right_style)],
-        [Paragraph("<b>Housing Allowance</b>", label_style), Paragraph(f"SAR {format_currency(get_num('housing_allowance'))}", cell_right_style)],
-        [Paragraph("<b>Transportation Allowance</b>", label_style), Paragraph(f"SAR {format_currency(get_num('transportation_allowance'))}", cell_right_style)],
-        [Paragraph("<b>Food Allowance</b>", label_style), Paragraph(f"SAR {format_currency(get_num('food_allowance'))}", cell_right_style)],
-        [Paragraph("<b>Mobile Allowance</b>", label_style), Paragraph(f"SAR {format_currency(get_num('mobile_allowance'))}", cell_right_style)],
-        [Paragraph("<b>Fixed OT</b>", label_style), Paragraph(f"SAR {format_currency(get_num('fixed_ot'))}", cell_right_style)],
-        [Paragraph("<b>Other Allowance</b>", label_style), Paragraph(f"SAR {format_currency(get_num('other_allowance'))}", cell_right_style)],
-        [Paragraph("<b>TOTAL SALARY</b>", cell_bold_style), Paragraph(f"<b>SAR {format_currency(total_salary)}</b>", cell_right_bold_style)],
+        [Paragraph("<b>Basic Salary</b>", label_style), Paragraph(format_currency(get_num('basic_salary')), cell_right_style)],
+        [Paragraph("<b>Housing</b>", label_style), Paragraph(format_currency(get_num('housing_allowance')), cell_right_style)],
+        [Paragraph("<b>Transportation</b>", label_style), Paragraph(format_currency(get_num('transportation_allowance')), cell_right_style)],
+        [Paragraph("<b>Food</b>", label_style), Paragraph(format_currency(get_num('food_allowance')), cell_right_style)],
+        [Paragraph("<b>Mobile</b>", label_style), Paragraph(format_currency(get_num('mobile_allowance')), cell_right_style)],
+        [Paragraph("<b>Fixed OT</b>", label_style), Paragraph(format_currency(get_num('fixed_ot')), cell_right_style)],
+        [Paragraph("<b>Other</b>", label_style), Paragraph(format_currency(get_num('other_allowance')), cell_right_style)],
+        [Paragraph("<b>TOTAL SALARY</b>", cell_bold_style), Paragraph(f"<b>{format_currency(total_salary)}</b>", cell_right_bold_style)],
     ]
 
     section_d_table = Table(section_d_data, colWidths=[40*mm, 53*mm])
@@ -527,7 +536,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('sick_leave', 'Sick Leave Cost'),
     ]
     e_header, e_table, e_one_time, e_annual, e_monthly = create_cost_section(
-        "E. EMPLOYEE COST", section_e_rows, "Total of Employee Cost"
+        "E. EMPLOYEE COST (SAR)", section_e_rows, "Total of Employee Cost"
     )
     elements.append(e_header)
     elements.append(e_table)
@@ -543,7 +552,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('family_levy', 'Levy Cost'),
     ]
     f_header, f_table, f_one_time, f_annual, f_monthly = create_cost_section(
-        "F. FAMILY COST", section_f_rows, "Total of Family Cost"
+        "F. FAMILY COST (SAR)", section_f_rows, "Total of Family Cost"
     )
     elements.append(f_header)
     elements.append(f_table)
@@ -562,7 +571,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('ajeer', 'Ajeer Cost'),
     ]
     g_header, g_table, g_one_time, g_annual, g_monthly = create_cost_section(
-        "G. GOVERNMENT COST", section_g_rows, "Total of Government Related Charges"
+        "G. GOVERNMENT COST (SAR)", section_g_rows, "Total of Government Related Charges"
     )
     elements.append(g_header)
     elements.append(g_table)
@@ -579,7 +588,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
         ('other_expenses', 'Other Expenses Cost (If Any)'),
     ]
     h_header, h_table, h_one_time, h_annual, h_monthly = create_cost_section(
-        "H. MOBILIZATION COST", section_h_rows, "Total of Mobilization Cost"
+        "H. MOBILIZATION COST (SAR)", section_h_rows, "Total of Mobilization Cost"
     )
     elements.append(h_header)
     elements.append(h_table)
