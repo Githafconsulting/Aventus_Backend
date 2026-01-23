@@ -150,10 +150,28 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     # Earnings Section
     elements.append(Paragraph("<b>Earnings</b>", styles['section']))
 
-    earnings_data = [
-        ['Description', 'Rate', 'Quantity', 'Amount'],
-        ['Day Rate', f"{payroll.currency} {payroll.day_rate:,.2f}", f"{payroll.work_days} days", f"{payroll.currency} {payroll.gross_amount:,.2f}"],
-    ]
+    # Handle different payment types (daily vs monthly)
+    currency = payroll.currency or "AED"
+    gross_pay = payroll.gross_pay or payroll.net_salary or 0
+
+    if payroll.day_rate and payroll.days_worked:
+        # Daily rate contractor
+        earnings_data = [
+            ['Description', 'Rate', 'Quantity', 'Amount'],
+            ['Day Rate', f"{currency} {payroll.day_rate:,.2f}", f"{payroll.days_worked} days", f"{currency} {gross_pay:,.2f}"],
+        ]
+    elif payroll.monthly_rate:
+        # Monthly salary contractor
+        earnings_data = [
+            ['Description', 'Rate', 'Quantity', 'Amount'],
+            ['Monthly Salary', f"{currency} {payroll.monthly_rate:,.2f}", "1 month", f"{currency} {gross_pay:,.2f}"],
+        ]
+    else:
+        # Fallback - just show net salary
+        earnings_data = [
+            ['Description', 'Rate', 'Quantity', 'Amount'],
+            ['Salary', '-', '-', f"{currency} {gross_pay:,.2f}"],
+        ]
 
     earnings_table = Table(earnings_data, colWidths=[60*mm, 40*mm, 30*mm, 40*mm])
     earnings_table.setStyle(TableStyle([
@@ -175,12 +193,13 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     elements.append(Spacer(1, 4*mm))
 
     # Deductions Section (if any)
-    if payroll.deductions > 0:
+    deductions = payroll.deductions or 0
+    if deductions > 0:
         elements.append(Paragraph("<b>Deductions</b>", styles['section']))
 
         deductions_data = [
             ['Description', 'Amount'],
-            ['Deductions', f"{payroll.currency} {payroll.deductions:,.2f}"],
+            ['Deductions', f"{currency} {deductions:,.2f}"],
         ]
 
         deductions_table = Table(deductions_data, colWidths=[130*mm, 40*mm])
@@ -202,10 +221,13 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     # Net Pay Summary
     elements.append(Paragraph("<b>Payment Summary</b>", styles['section']))
 
+    # Use net_salary
+    net_pay = payroll.net_salary or 0
+
     summary_data = [
-        ['Gross Pay', f"{payroll.currency} {payroll.gross_amount:,.2f}"],
-        ['Deductions', f"-{payroll.currency} {payroll.deductions:,.2f}"],
-        ['Net Pay', f"{payroll.currency} {payroll.net_amount:,.2f}"],
+        ['Gross Pay', f"{currency} {gross_pay:,.2f}"],
+        ['Deductions', f"-{currency} {deductions:,.2f}"],
+        ['Net Pay', f"{currency} {net_pay:,.2f}"],
     ]
 
     summary_table = Table(summary_data, colWidths=[130*mm, 40*mm])
@@ -369,14 +391,27 @@ def generate_invoice_pdf(payroll, contractor) -> BytesIO:
     # Invoice Details
     elements.append(Paragraph("<b>Service Details</b>", styles['section']))
 
+    # Handle None values
+    currency = payroll.currency or "AED"
+    invoice_amount = payroll.invoice_amount or payroll.invoice_total or payroll.total_payable or payroll.net_salary or 0
+    charge_rate = payroll.charge_rate_day or payroll.day_rate or 0
+    days_worked = payroll.days_worked or 0
+
+    if charge_rate and days_worked:
+        rate_str = f"{currency} {charge_rate:,.2f}/day"
+        qty_str = f"{days_worked}"
+    else:
+        rate_str = "-"
+        qty_str = "-"
+
     details_data = [
         ['Description', 'Period', 'Rate', 'Qty', 'Amount'],
         [
             f"Contractor Services - {contractor_name}",
             payroll.period or "N/A",
-            f"{payroll.currency} {payroll.charge_rate_day:,.2f}/day",
-            f"{payroll.work_days}",
-            f"{payroll.currency} {payroll.invoice_amount:,.2f}"
+            rate_str,
+            qty_str,
+            f"{currency} {invoice_amount:,.2f}"
         ],
     ]
 
@@ -401,9 +436,9 @@ def generate_invoice_pdf(payroll, contractor) -> BytesIO:
 
     # Total Section
     total_data = [
-        ['Subtotal:', f"{payroll.currency} {payroll.invoice_amount:,.2f}"],
-        ['VAT (0%):', f"{payroll.currency} 0.00"],
-        ['Total Due:', f"{payroll.currency} {payroll.invoice_amount:,.2f}"],
+        ['Subtotal:', f"{currency} {invoice_amount:,.2f}"],
+        ['VAT (0%):', f"{currency} 0.00"],
+        ['Total Due:', f"{currency} {invoice_amount:,.2f}"],
     ]
 
     total_table = Table(total_data, colWidths=[130*mm, 40*mm])
