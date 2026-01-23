@@ -390,7 +390,7 @@ def send_uploaded_timesheet_to_manager(
     manager_email: str,
     manager_name: str,
     contractor_name: str,
-    timesheet_id: int,
+    review_link: str,
     filename: Optional[str] = None,
     period: Optional[str] = None,
     client_name: Optional[str] = None
@@ -400,7 +400,7 @@ def send_uploaded_timesheet_to_manager(
         "timesheet_uploaded",
         manager_name=manager_name,
         contractor_name=contractor_name,
-        review_link=f"{settings.frontend_url}/timesheets/{timesheet_id}",
+        review_link=review_link,
         filename=filename,
         period=period,
         client_name=client_name,

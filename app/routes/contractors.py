@@ -1994,6 +1994,13 @@ async def activate_contractor(
         except Exception as email_error:
             print(f"Warning: Failed to send activation email: {email_error}")
 
+        # Create notification for the newly activated contractor
+        try:
+            from app.routes.notifications import notify_contractor_activated
+            notify_contractor_activated(db, user.id)
+        except Exception as notif_error:
+            print(f"Warning: Failed to create activation notification: {notif_error}")
+
         return {
             "message": "Contractor account activated successfully",
             "contractor_id": contractor.id,
@@ -3799,6 +3806,34 @@ async def sign_cohf(
 
     db.commit()
     db.refresh(contractor)
+
+    # Notify admins that COHF has been signed
+    try:
+        from app.routes.notifications import notify_users_by_role, NotificationType
+        contractor_name = f"{contractor.first_name} {contractor.surname}"
+        notify_users_by_role(
+            db=db,
+            role="admin",
+            notification_type=NotificationType.COHF_SIGNED.value,
+            title="COHF Signed by 3rd Party",
+            message=f"The Confirmation of Hire Form for {contractor_name} has been signed by {signer_name}.",
+            reference_type="contractor",
+            reference_id=contractor.id,
+            action_url=f"/dashboard/contractors/{contractor.id}"
+        )
+        # Also notify superadmins
+        notify_users_by_role(
+            db=db,
+            role="superadmin",
+            notification_type=NotificationType.COHF_SIGNED.value,
+            title="COHF Signed by 3rd Party",
+            message=f"The Confirmation of Hire Form for {contractor_name} has been signed by {signer_name}.",
+            reference_type="contractor",
+            reference_id=contractor.id,
+            action_url=f"/dashboard/contractors/{contractor.id}"
+        )
+    except Exception as notif_error:
+        print(f"Warning: Failed to create COHF signed notification: {notif_error}")
 
     return {
         "message": "COHF signed successfully",

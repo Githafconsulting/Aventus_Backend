@@ -11,11 +11,13 @@ from app.models.proposal import Proposal, ProposalStatus
 from app.models.payroll import Payroll, PayrollStatus
 from app.models.payslip import Payslip, PayslipStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoicePayment
+from app.models.notification import Notification, NotificationType
 
 __all__ = [
     "User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet",
     "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus",
     "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus",
     "Proposal", "ProposalStatus", "Payroll", "PayrollStatus",
-    "Payslip", "PayslipStatus", "Invoice", "InvoiceStatus", "InvoicePayment"
+    "Payslip", "PayslipStatus", "Invoice", "InvoiceStatus", "InvoicePayment",
+    "Notification", "NotificationType"
 ]

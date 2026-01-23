@@ -374,10 +374,10 @@ async def upload_timesheet(
         manager_email=manager_email,
         manager_name=manager_name,
         contractor_name=contractor_name,
-        timesheet_month=month,
         review_link=review_link,
-        file_content=timesheet_file_content,
-        filename=timesheet_file.filename
+        filename=timesheet_file.filename,
+        period=month,
+        client_name=contractor.client_name
     )
 
     return {
@@ -553,6 +553,18 @@ def approve_timesheet_by_token(token: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(timesheet)
 
+    # Create notification for contractor
+    try:
+        from app.models.user import User
+        from app.routes.notifications import notify_contractor_timesheet_approved
+        contractor = db.query(Contractor).filter(Contractor.id == timesheet.contractor_id).first()
+        if contractor:
+            user = db.query(User).filter(User.contractor_id == contractor.id).first()
+            if user:
+                notify_contractor_timesheet_approved(db, user.id, timesheet.month)
+    except Exception as e:
+        print(f"Error creating notification: {e}")
+
     return {
         "message": "Timesheet approved successfully",
         "status": timesheet.status.value,
@@ -590,6 +602,18 @@ def decline_timesheet_by_token(token: str, request: DeclineRequest, db: Session 
 
     db.commit()
     db.refresh(timesheet)
+
+    # Create notification for contractor
+    try:
+        from app.models.user import User
+        from app.routes.notifications import notify_contractor_timesheet_declined
+        contractor = db.query(Contractor).filter(Contractor.id == timesheet.contractor_id).first()
+        if contractor:
+            user = db.query(User).filter(User.contractor_id == contractor.id).first()
+            if user:
+                notify_contractor_timesheet_declined(db, user.id, timesheet.month, request.reason)
+    except Exception as e:
+        print(f"Error creating notification: {e}")
 
     return {
         "message": "Timesheet declined",
