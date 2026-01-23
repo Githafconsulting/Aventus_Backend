@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.config import settings
 from app.routes import auth, contractors, third_parties, timesheets, clients, contracts, work_orders, templates, quote_sheets, proposals, payroll, payslips, invoices
 from app.database import engine, Base
+import traceback
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -16,16 +18,28 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS configuration - allow localhost and local network IPs
+# CORS configuration - allow all origins for development
 # In production, you would want to restrict this to specific domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$",
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,  # Must be False when using allow_origins=["*"]
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+# Global exception handler to ensure errors are returned with proper format
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"Unhandled exception: {exc}")
+    print(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")

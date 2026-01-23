@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from app.database import get_db
 from app.models.work_order import WorkOrder, WorkOrderStatus
@@ -10,7 +11,7 @@ from app.schemas.work_order import WorkOrderCreate, WorkOrderUpdate, WorkOrderRe
 from app.models.user import User, UserRole
 from app.models.contractor import Contractor, ContractorStatus
 from app.utils.auth import get_current_active_user, require_role
-from app.utils.storage import storage
+from app.utils.storage import storage, upload_file
 from app.utils.work_order_pdf_generator import generate_work_order_pdf
 from datetime import datetime, timezone
 import uuid
@@ -433,48 +434,110 @@ async def sign_work_order(
     PUBLIC ENDPOINT: Client signs work order using signature token
     No authentication required
     """
-    work_order = db.query(WorkOrder).filter(
-        WorkOrder.client_signature_token == signature_token
-    ).first()
+    try:
+        work_order = db.query(WorkOrder).filter(
+            WorkOrder.client_signature_token == signature_token
+        ).first()
 
-    if not work_order:
+        if not work_order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Work order not found or link is invalid"
+            )
+
+        # Check if already signed by client
+        if work_order.status in [WorkOrderStatus.PENDING_AVENTUS_SIGNATURE, WorkOrderStatus.COMPLETED]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This work order has already been signed"
+            )
+
+        # Check if work order is in correct status
+        if work_order.status != WorkOrderStatus.PENDING_CLIENT_SIGNATURE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"This work order is not pending signature. Current status: {work_order.status}"
+            )
+
+        # Update work order with signature
+        work_order.client_signature_type = signature_data.signature_type
+        work_order.client_signature_data = signature_data.signature_data
+        work_order.client_signed_date = datetime.now(timezone.utc)
+        work_order.status = WorkOrderStatus.PENDING_AVENTUS_SIGNATURE
+
+        # Note: Contractor status is NOT updated yet
+        # It will be updated to WORK_ORDER_COMPLETED only after Aventus counter-signs
+
+        db.commit()
+        db.refresh(work_order)
+
+        # Generate signed work order PDF and save to contractor documents
+        try:
+            contractor = db.query(Contractor).filter(Contractor.id == work_order.contractor_id).first()
+            if contractor:
+                # Convert WorkOrder model to dictionary for PDF generator
+                work_order_data = {
+                    "work_order_number": work_order.work_order_number,
+                    "contractor_name": work_order.contractor_name,
+                    "client_name": work_order.client_name,
+                    "role": work_order.role,
+                    "location": work_order.location,
+                    "start_date": work_order.start_date.strftime("%d %B %Y") if work_order.start_date else "",
+                    "end_date": work_order.end_date.strftime("%d %B %Y") if work_order.end_date else "",
+                    "duration": work_order.duration,
+                    "charge_rate": work_order.charge_rate,
+                    "pay_rate": work_order.pay_rate,
+                    "currency": work_order.currency,
+                    "project_name": work_order.project_name,
+                    "client_signature_type": work_order.client_signature_type,
+                    "client_signature_data": work_order.client_signature_data,
+                    "client_signed_date": work_order.client_signed_date.strftime("%d %B %Y") if work_order.client_signed_date else "",
+                }
+
+                # Generate the PDF
+                pdf_buffer = generate_work_order_pdf(work_order_data)
+
+                # Upload to storage
+                timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+                filename = f"work_order_{work_order.work_order_number}_{timestamp}.pdf"
+                folder = f"contractor-documents/{contractor.id}"
+
+                pdf_url = upload_file(pdf_buffer, filename, folder)
+
+                # Add to contractor's other_documents
+                other_docs = list(contractor.other_documents or [])
+                other_docs.append({
+                    "type": "signed_work_order",
+                    "name": f"Signed Work Order - {work_order.work_order_number}",
+                    "url": pdf_url,
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    "work_order_id": work_order.id
+                })
+                contractor.other_documents = other_docs
+                flag_modified(contractor, "other_documents")
+
+                db.commit()
+                print(f"Signed work order PDF saved to contractor documents: {pdf_url}")
+        except Exception as pdf_error:
+            # Don't fail the signing if PDF upload fails, just log it
+            print(f"Warning: Failed to save signed work order PDF: {pdf_error}")
+
+        return {
+            "message": "Work order signed successfully. Awaiting Aventus counter-signature.",
+            "work_order_number": work_order.work_order_number,
+            "signed_date": work_order.client_signed_date.isoformat(),
+            "status": "pending_aventus_signature"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error signing work order: {e}")
+        print(traceback.format_exc())
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Work order not found or link is invalid"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to sign work order: {str(e)}"
         )
-
-    # Check if already signed by client
-    if work_order.status in [WorkOrderStatus.PENDING_AVENTUS_SIGNATURE, WorkOrderStatus.COMPLETED]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This work order has already been signed"
-        )
-
-    # Check if work order is in correct status
-    if work_order.status != WorkOrderStatus.PENDING_CLIENT_SIGNATURE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This work order is not pending signature"
-        )
-
-    # Update work order with signature
-    work_order.client_signature_type = signature_data.signature_type
-    work_order.client_signature_data = signature_data.signature_data
-    work_order.client_signed_date = datetime.now(timezone.utc)
-    work_order.status = WorkOrderStatus.PENDING_AVENTUS_SIGNATURE
-
-    # Note: Contractor status is NOT updated yet
-    # It will be updated to WORK_ORDER_COMPLETED only after Aventus counter-signs
-
-    db.commit()
-    db.refresh(work_order)
-
-    return {
-        "message": "Work order signed successfully. Awaiting Aventus counter-signature.",
-        "work_order_number": work_order.work_order_number,
-        "signed_date": work_order.client_signed_date.isoformat(),
-        "status": "pending_aventus_signature"
-    }
 
 # ============================================
 # AVENTUS COUNTER-SIGNATURE ENDPOINTS
