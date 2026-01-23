@@ -1930,72 +1930,88 @@ async def activate_contractor(
     current_user: User = Depends(require_role(["admin", "superadmin"]))
 ):
     """
-    Step 3: Admin activates contractor account
+    Admin activates contractor account
     Creates user account and sends login credentials
     """
-    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+    try:
+        contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
-    if not contractor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contractor not found"
+        if not contractor:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Contractor not found"
+            )
+
+        # Check if contract is signed
+        if contractor.status != ContractorStatus.SIGNED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Contract must be signed before activation. Current status: {contractor.status}"
+            )
+
+        # Check if user account already exists
+        existing_user = db.query(User).filter(User.email == contractor.email).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User account already exists for this email"
+            )
+
+        # Generate temporary password
+        temp_password = generate_temp_password()
+
+        # Create user account
+        user = User(
+            id=str(uuid.uuid4()),
+            name=f"{contractor.first_name} {contractor.surname}",
+            email=contractor.email,
+            password_hash=get_password_hash(temp_password),
+            role=UserRole.CONTRACTOR,
+            is_active=True,
+            is_first_login=True,
+            contractor_id=contractor.id
         )
 
-    # Check if contract is signed
-    if contractor.status != ContractorStatus.SIGNED:
+        db.add(user)
+
+        # Update contractor status
+        contractor.status = ContractorStatus.ACTIVE
+        contractor.activated_date = datetime.now(timezone.utc)
+
+        db.commit()
+        db.refresh(contractor)
+        db.refresh(user)
+
+        # Send activation email with credentials
+        email_sent = False
+        try:
+            contractor_name = f"{contractor.first_name} {contractor.surname}"
+            email_sent = send_activation_email(
+                contractor_email=contractor.email,
+                contractor_name=contractor_name,
+                temporary_password=temp_password
+            )
+        except Exception as email_error:
+            print(f"Warning: Failed to send activation email: {email_error}")
+
+        return {
+            "message": "Contractor account activated successfully",
+            "contractor_id": contractor.id,
+            "user_id": user.id,
+            "status": contractor.status.value if hasattr(contractor.status, 'value') else str(contractor.status),
+            "email_sent": email_sent
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"Error activating contractor: {e}")
+        print(traceback.format_exc())
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contract must be signed before activation"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to activate contractor: {str(e)}"
         )
-
-    # Check if user account already exists
-    existing_user = db.query(User).filter(User.email == contractor.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User account already exists for this email"
-        )
-
-    # Generate temporary password
-    temp_password = generate_temp_password()
-
-    # Create user account
-    user = User(
-        id=str(uuid.uuid4()),
-        name=f"{contractor.first_name} {contractor.surname}",
-        email=contractor.email,
-        password_hash=get_password_hash(temp_password),
-        role=UserRole.CONTRACTOR,
-        is_active=True,
-        is_first_login=True,
-        contractor_id=contractor.id
-    )
-
-    db.add(user)
-
-    # Update contractor status
-    contractor.status = ContractorStatus.ACTIVE
-    contractor.activated_date = datetime.now(timezone.utc)
-
-    db.commit()
-    db.refresh(contractor)
-    db.refresh(user)
-
-    # Send activation email with credentials
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
-    email_sent = send_activation_email(
-        contractor_email=contractor.email,
-        contractor_name=contractor_name,
-        temporary_password=temp_password
-    )
-
-    return {
-        "message": "Contractor account activated successfully",
-        "contractor_id": contractor.id,
-        "user_id": user.id,
-        "status": contractor.status,
-        "email_sent": email_sent
-    }
 
 
 @router.delete("/{contractor_id}")
@@ -3163,88 +3179,6 @@ async def reset_contractor_to_pending_signature(
         "message": "Contractor status reset to pending_superadmin_signature",
         "contractor_id": contractor.id,
         "status": contractor.status.value
-    }
-
-
-@router.post("/{contractor_id}/activate")
-async def activate_contractor_account(
-    contractor_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["admin", "superadmin"]))
-):
-    """
-    Superadmin activates contractor account and sends login credentials
-    """
-    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
-
-    if not contractor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contractor not found"
-        )
-
-    # Check status - must be signed
-    if contractor.status != ContractorStatus.SIGNED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contract must be signed before activation"
-        )
-
-    # Check if contractor user already exists
-    existing_user = db.query(User).filter(User.email == contractor.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User account already exists for this email"
-        )
-
-    # Generate temporary password
-    temp_password = generate_temp_password()
-    password_hash = get_password_hash(temp_password)
-
-    # Create user account for contractor
-    new_user = User(
-        id=str(uuid.uuid4()),
-        name=f"{contractor.first_name} {contractor.surname}",
-        email=contractor.email,
-        password_hash=password_hash,
-        role=UserRole.CONTRACTOR,
-        is_active=True,
-        is_first_login=True,
-        contractor_id=contractor.id,
-        created_at=datetime.now(timezone.utc)
-    )
-
-    db.add(new_user)
-
-    # Update contractor status to active
-    contractor.status = ContractorStatus.ACTIVE
-    contractor.activated_date = datetime.now(timezone.utc)
-
-    db.commit()
-    db.refresh(contractor)
-    db.refresh(new_user)
-
-    # Send activation email with credentials
-    try:
-        email_sent = send_activation_email(
-            contractor_email=contractor.email,
-            contractor_name=f"{contractor.first_name} {contractor.surname}",
-            temp_password=temp_password
-        )
-
-        # Email sent silently
-    except Exception as e:
-        print(f"[ERROR] Exception sending activation email: {str(e)}")
-
-    return {
-        "message": "Contractor account activated successfully",
-        "contractor_id": contractor.id,
-        "user_id": new_user.id,
-        "email": contractor.email,
-        "status": "active",
-        "credentials_sent": True,
-        "login_url": f"{settings.frontend_url}/login"
     }
 
 

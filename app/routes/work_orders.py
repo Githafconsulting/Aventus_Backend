@@ -410,6 +410,13 @@ async def get_work_order_pdf_by_token(
         "project_name": work_order.project_name or '',
         "business_type": work_order.business_type or '',
         "umbrella_company_name": work_order.umbrella_company_name or '',
+        # Include signature data for signed work orders
+        "client_signature_type": work_order.client_signature_type,
+        "client_signature_data": work_order.client_signature_data,
+        "client_signed_date": work_order.client_signed_date.strftime('%d %B %Y') if work_order.client_signed_date else '',
+        "aventus_signature_type": work_order.aventus_signature_type,
+        "aventus_signature_data": work_order.aventus_signature_data,
+        "aventus_signed_date": work_order.aventus_signed_date.strftime('%d %B %Y') if work_order.aventus_signed_date else '',
     }
 
     # Generate PDF
