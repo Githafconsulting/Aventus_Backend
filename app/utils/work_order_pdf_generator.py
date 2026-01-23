@@ -22,14 +22,14 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     """
     buffer = BytesIO()
 
-    # Create PDF document
+    # Create PDF document with compact margins to fit on one A4 page
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=25*mm,
-        leftMargin=25*mm,
-        topMargin=20*mm,
-        bottomMargin=20*mm,
+        rightMargin=15*mm,
+        leftMargin=15*mm,
+        topMargin=12*mm,
+        bottomMargin=12*mm,
     )
 
     elements = []
@@ -40,13 +40,13 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     dark_gray = colors.HexColor('#1F2937')
     light_gray = colors.HexColor('#F3F4F6')
 
-    # Custom styles
+    # Custom styles - compact for single page
     header_style = ParagraphStyle(
         'Header',
         parent=styles['Heading1'],
-        fontSize=20,
+        fontSize=16,
         textColor=orange,
-        spaceAfter=6,
+        spaceAfter=3,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
     )
@@ -54,9 +54,9 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     title_style = ParagraphStyle(
         'Title',
         parent=styles['Heading2'],
-        fontSize=14,
-        spaceAfter=12,
-        spaceBefore=8,
+        fontSize=12,
+        spaceAfter=6,
+        spaceBefore=4,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
     )
@@ -64,28 +64,28 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     section_style = ParagraphStyle(
         'Section',
         parent=styles['Heading3'],
-        fontSize=11,
+        fontSize=10,
         textColor=dark_gray,
-        spaceAfter=6,
-        spaceBefore=10,
+        spaceAfter=3,
+        spaceBefore=6,
         fontName='Helvetica-Bold',
     )
 
     body_style = ParagraphStyle(
         'Body',
         parent=styles['BodyText'],
-        fontSize=10,
+        fontSize=9,
         alignment=TA_LEFT,
-        spaceAfter=6,
-        leading=14,
+        spaceAfter=2,
+        leading=11,
         fontName='Helvetica'
     )
 
     small_style = ParagraphStyle(
         'Small',
         parent=body_style,
-        fontSize=9,
-        leading=12,
+        fontSize=8,
+        leading=10,
     )
 
     # Extract data
@@ -104,21 +104,21 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     umbrella_company = work_order_data.get('umbrella_company_name', '[Company Name]')
     project_name = work_order_data.get('project_name', '')
 
-    # Add logo if available
+    # Add logo if available - smaller for compact layout
     logo_path = os.path.join("app", "static", "av-logo.png")
     if os.path.exists(logo_path):
-        logo = Image(logo_path, width=60*mm, height=15*mm)
+        logo = Image(logo_path, width=50*mm, height=12*mm)
         logo.hAlign = 'CENTER'
         elements.append(logo)
-        elements.append(Spacer(1, 4*mm))
+        elements.append(Spacer(1, 2*mm))
 
     # Add title - Appendix 1
     appendix_style = ParagraphStyle(
         'Appendix',
         parent=styles['Normal'],
-        fontSize=11,
+        fontSize=9,
         alignment=TA_CENTER,
-        spaceAfter=4,
+        spaceAfter=2,
         fontName='Helvetica'
     )
     elements.append(Paragraph("Appendix \"1\"", appendix_style))
@@ -126,105 +126,84 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     title_style = ParagraphStyle(
         'Title',
         parent=styles['Normal'],
-        fontSize=16,
+        fontSize=14,
         alignment=TA_CENTER,
-        spaceAfter=12,
+        spaceAfter=6,
         fontName='Helvetica-Bold',
         textColor=orange
     )
     elements.append(Paragraph("CONTRACTOR WORK ORDER", title_style))
 
     # Horizontal rule
-    elements.append(Spacer(1, 2*mm))
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
         ('LINEABOVE', (0, 0), (-1, 0), 1, colors.grey),
     ])))
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 2*mm))
 
     # Details and Definitions header
     elements.append(Paragraph("<b>Details and Definitions</b>", section_style))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Main details
     elements.append(Paragraph(f"<b>Contractor:</b> {contractor_name}", body_style))
-    elements.append(Spacer(1, 1*mm))
     elements.append(Paragraph(f"<b>Location:</b> {location}, or such other site as may be agreed from time to time by parties", body_style))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Horizontal rule
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
         ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
     ])))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Assignment Term section
-    elements.append(Paragraph("<b>Assignment Term:</b>", body_style))
-    elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph(f"<b>From:</b> {start_date}", body_style))
-    elements.append(Spacer(1, 0.5*mm))
-    elements.append(Paragraph(f"<b>To:</b> {end_date}", body_style))
-    elements.append(Spacer(1, 0.5*mm))
-    elements.append(Paragraph(f"<b>Duration:</b> {duration}", body_style))
-    elements.append(Spacer(1, 3*mm))
-
-    # Position
+    elements.append(Paragraph(f"<b>Assignment Term:</b> From {start_date} to {end_date} ({duration})", body_style))
     elements.append(Paragraph(f"<b>Position:</b> {role}", body_style))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Horizontal rule
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
         ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
     ])))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Assignment details
     elements.append(Paragraph("<b>Assignment details:</b>", body_style))
-    elements.append(Spacer(1, 1*mm))
     if project_name:
         elements.append(Paragraph(f"{project_name}", body_style))
-        elements.append(Spacer(1, 0.5*mm))
     elements.append(Paragraph("<i>(Include the type of work to be carried out)</i>", small_style))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
     # Horizontal rule
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
         ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
     ])))
-    elements.append(Spacer(1, 3*mm))
+    elements.append(Spacer(1, 1*mm))
 
-    # Financial and other details
-    elements.append(Paragraph("<b>Overtime:</b> N/A", body_style))
-    elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph(f"<b>Charge Rate:</b> {charge_rate} {currency} per professional month worked", body_style))
-    elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph(f"<b>Currency:</b> {currency}", body_style))
-    elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph("<b>Termination Notice Period:</b> TBC", body_style))
-    elements.append(Spacer(1, 1*mm))
-    elements.append(Paragraph("<b>Payment terms:</b> As per agreement, from date of invoice", body_style))
-    elements.append(Spacer(1, 1*mm))
+    # Financial and other details - more compact
+    elements.append(Paragraph(f"<b>Overtime:</b> N/A &nbsp;&nbsp;&nbsp;&nbsp; <b>Charge Rate:</b> {charge_rate} {currency} per professional month worked &nbsp;&nbsp;&nbsp;&nbsp; <b>Currency:</b> {currency}", body_style))
+    elements.append(Paragraph("<b>Termination Notice Period:</b> TBC &nbsp;&nbsp;&nbsp;&nbsp; <b>Payment terms:</b> As per agreement, from date of invoice", body_style))
     elements.append(Paragraph("<b>Expenses:</b> All expenses approved in writing by the Client either to the Contractor or to Aventus", body_style))
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 2*mm))
 
     # Horizontal rule before signatures
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
         ('LINEABOVE', (0, 0), (-1, 0), 1, colors.grey),
     ])))
-    elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 2*mm))
 
-    # Signature Section
+    # Signature Section - compact
     sig_header_style = ParagraphStyle(
         'SigHeader',
         parent=body_style,
-        fontSize=11,
+        fontSize=9,
         fontName='Helvetica-Bold',
-        spaceAfter=4
+        spaceAfter=2
     )
 
     signature_style = ParagraphStyle(
         'Signature',
         parent=body_style,
-        fontSize=16,
+        fontSize=12,
         fontName='Helvetica-Oblique',
         textColor=colors.blue,
         alignment=TA_LEFT
@@ -239,102 +218,80 @@ def generate_work_order_pdf(work_order_data: dict) -> BytesIO:
     aventus_signature_data = work_order_data.get('aventus_signature_data')
     aventus_signed_date = work_order_data.get('aventus_signed_date')
 
-    # Two-column signature layout
+    # Two-column signature layout - compact
     # Left column - Client
-    client_col = [Paragraph(f"<b>FOR {client_name.upper()}:</b>", sig_header_style), Spacer(1, 2*mm)]
+    client_col = [Paragraph(f"<b>FOR {client_name.upper()}:</b>", sig_header_style)]
 
     if client_signature_data:
         if client_signature_type == "drawn":
-            # Display drawn signature as image
             try:
-                # Remove data:image/png;base64, prefix if present
                 if client_signature_data.startswith('data:image'):
                     client_signature_data = client_signature_data.split(',')[1]
                 sig_image_data = base64.b64decode(client_signature_data)
                 sig_buffer = BytesIO(sig_image_data)
-                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+                sig_image = Image(sig_buffer, width=40*mm, height=12*mm)
                 client_col.append(sig_image)
             except Exception as e:
                 client_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
         else:
-            # Display typed signature
             client_col.append(Paragraph(f"<i>{client_signature_data}</i>", signature_style))
-
-        client_col.extend([
-            Spacer(1, 1*mm),
-            Paragraph(f"Date: {client_signed_date[:10] if client_signed_date else 'N/A'}", body_style),
-        ])
+        client_col.append(Paragraph(f"Date: {client_signed_date[:10] if client_signed_date else 'N/A'}", body_style))
     else:
         client_col.extend([
-            Paragraph("Signed: _____________________________", body_style),
-            Spacer(1, 1*mm),
-            Paragraph("Name: _____________________________", body_style),
-            Spacer(1, 1*mm),
-            Paragraph("Date: _____________________________", body_style),
+            Paragraph("Signed: ________________________", body_style),
+            Paragraph("Name: ________________________", body_style),
+            Paragraph("Date: ________________________", body_style),
         ])
 
     # Right column - Aventus
-    aventus_col = [Paragraph("<b>FOR AVENTUS CONTRACTOR MANAGEMENT:</b>", sig_header_style), Spacer(1, 2*mm)]
+    aventus_col = [Paragraph("<b>FOR AVENTUS:</b>", sig_header_style)]
 
     if aventus_signature_data:
         if aventus_signature_type == "drawn":
-            # Display drawn signature as image
             try:
-                # Remove data:image/png;base64, prefix if present
                 if aventus_signature_data.startswith('data:image'):
                     aventus_signature_data = aventus_signature_data.split(',')[1]
                 sig_image_data = base64.b64decode(aventus_signature_data)
                 sig_buffer = BytesIO(sig_image_data)
-                sig_image = Image(sig_buffer, width=50*mm, height=15*mm)
+                sig_image = Image(sig_buffer, width=40*mm, height=12*mm)
                 aventus_col.append(sig_image)
             except Exception as e:
                 aventus_col.append(Paragraph(f"<i>[Signature]</i>", signature_style))
         else:
-            # Display typed signature
             aventus_col.append(Paragraph(f"<i>{aventus_signature_data}</i>", signature_style))
-
-        aventus_col.extend([
-            Spacer(1, 1*mm),
-            Paragraph(f"Date: {aventus_signed_date[:10] if aventus_signed_date else 'N/A'}", body_style),
-        ])
+        aventus_col.append(Paragraph(f"Date: {aventus_signed_date[:10] if aventus_signed_date else 'N/A'}", body_style))
     else:
         aventus_col.extend([
-            Paragraph("Signed: _____________________________", body_style),
-            Spacer(1, 1*mm),
-            Paragraph("Name: _____________________________", body_style),
-            Spacer(1, 1*mm),
-            Paragraph("Date: _____________________________", body_style),
+            Paragraph("Signed: ________________________", body_style),
+            Paragraph("Name: ________________________", body_style),
+            Paragraph("Date: ________________________", body_style),
         ])
 
     # Create side-by-side table
-    signature_table = Table([[client_col, aventus_col]], colWidths=[75*mm, 75*mm])
+    signature_table = Table([[client_col, aventus_col]], colWidths=[90*mm, 90*mm])
     signature_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 2),
     ]))
     elements.append(signature_table)
-    elements.append(Spacer(1, 5*mm))
-
-    # Horizontal rule before footer
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
-        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
-    ])))
     elements.append(Spacer(1, 2*mm))
 
-    # Footer
+    # Horizontal rule before footer
+    elements.append(Table([['', '']], colWidths=[180*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.lightgrey),
+    ])))
+    elements.append(Spacer(1, 1*mm))
+
+    # Footer - compact
     footer_style = ParagraphStyle(
         'Footer',
         parent=small_style,
         alignment=TA_CENTER,
-        fontSize=8,
+        fontSize=7,
         textColor=colors.grey
     )
-    footer_text = """
-    <b>AVENTUS CONTRACTOR MANAGEMENT</b><br/>
-    Email: contact@aventus.com<br/>
-    <i>This is a legally binding agreement. Please read carefully before signing.</i>
-    """
+    footer_text = "<b>AVENTUS CONTRACTOR MANAGEMENT</b> | Email: contact@aventus.com | <i>This is a legally binding agreement.</i>"
     elements.append(Paragraph(footer_text, footer_style))
 
     # Build PDF
