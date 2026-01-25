@@ -155,6 +155,7 @@ async def list_contractors_summary(
     List contractors with minimal fields for dashboard/list views.
     Much faster than full list as it only fetches required columns.
     Supports pagination with page and limit parameters.
+    Includes work_order_status and display_status for combined tracking.
     """
     # Only select the columns needed for dashboard display
     query = db.query(
@@ -165,7 +166,12 @@ async def list_contractors_summary(
         Contractor.status,
         Contractor.created_at,
         Contractor.phone,
-        Contractor.consultant_name
+        Contractor.consultant_name,
+        Contractor.onboarding_route,
+        Contractor.role,
+        Contractor.cohf_status,
+        Contractor.cohf_aventus_signed_date,
+        Contractor.quote_sheet_status
     )
 
     if status_filter:
@@ -175,7 +181,85 @@ async def list_contractors_summary(
     offset = (page - 1) * limit
     results = query.order_by(Contractor.created_at.desc()).offset(offset).limit(limit).all()
 
-    # Convert to list of dicts
+    # Get contractor IDs for batch work order query
+    contractor_ids = [r.id for r in results]
+
+    # Batch query work orders for all contractors
+    work_orders = db.query(WorkOrder).filter(
+        WorkOrder.contractor_id.in_(contractor_ids)
+    ).all() if contractor_ids else []
+
+    # Create a mapping of contractor_id to work order status
+    work_order_map = {}
+    for wo in work_orders:
+        work_order_map[wo.contractor_id] = wo.status.value if hasattr(wo.status, 'value') else wo.status
+
+    def get_display_status(contractor_status, work_order_status):
+        """
+        Compute display status based on both work order and contract status.
+        Work Order statuses: pending_client_signature, client_signed, pending_aventus_signature, completed
+        Contract statuses: pending_signature, signed, etc.
+        """
+        status_val = contractor_status.value if hasattr(contractor_status, 'value') else contractor_status
+
+        # If both WO and Contract are in play
+        if work_order_status and status_val == 'pending_signature':
+            # Contract sent, check WO status
+            if work_order_status == 'completed':
+                return "Work Order Signed, Awaiting Contractor Signature"
+            elif work_order_status in ['client_signed', 'pending_aventus_signature']:
+                return "Work Order Pending Counter-Sign, Awaiting Contractor Signature"
+            elif work_order_status in ['sent', 'pending_client_signature']:
+                return "Awaiting Work Order & Contract Signatures"
+            else:
+                return "Awaiting Contractor Signature"
+
+        # Work order completed but contract not sent yet
+        if work_order_status == 'completed' and status_val == 'work_order_completed':
+            return "Work Order Signed"
+
+        # Work order client signed, awaiting counter-sign
+        if work_order_status in ['client_signed', 'pending_aventus_signature']:
+            if status_val == 'pending_client_wo_signature':
+                return "Work Order Pending Counter-Sign"
+            elif status_val == 'pending_signature':
+                return "Work Order Pending Counter-Sign, Awaiting Contractor Signature"
+
+        # Work order sent to client, awaiting signature
+        if work_order_status in ['sent', 'pending_client_signature'] and status_val == 'pending_client_wo_signature':
+            return "Awaiting Client Work Order Signature"
+
+        # Default status display
+        status_display_map = {
+            'draft': 'Draft',
+            'pending_documents': 'Pending Documents',
+            'documents_uploaded': 'Documents Uploaded',
+            'pending_cohf': 'Pending COHF',
+            'awaiting_cohf_signature': 'Awaiting COHF Signature',
+            'cohf_completed': 'COHF Completed',
+            'pending_third_party_quote': 'Pending Third Party Quote',
+            'pending_third_party_response': 'Pending Third Party Response',
+            'pending_cds_cs': 'Pending CDS/CS',
+            'cds_cs_completed': 'CDS/CS Completed',
+            'pending_review': 'Pending Review',
+            'approved': 'Approved',
+            'rejected': 'Rejected',
+            'cancelled': 'Cancelled',
+            'pending_client_wo_signature': 'Awaiting Client Work Order Signature',
+            'work_order_completed': 'Work Order Signed',
+            'pending_contract_upload': 'Pending Contract Upload',
+            'pending_3rd_party_contract': 'Pending 3rd Party Contract',
+            'contract_uploaded': 'Contract Uploaded',
+            'contract_approved': 'Contract Approved',
+            'pending_signature': 'Awaiting Contractor Signature',
+            'pending_superadmin_signature': 'Awaiting Superadmin Signature',
+            'signed': 'Signed',
+            'active': 'Active',
+            'suspended': 'Suspended'
+        }
+        return status_display_map.get(status_val, status_val)
+
+    # Convert to list of dicts with work order status
     return [
         {
             "id": r.id,
@@ -183,9 +267,16 @@ async def list_contractors_summary(
             "surname": r.surname,
             "email": r.email,
             "status": r.status.value if hasattr(r.status, 'value') else r.status,
+            "work_order_status": work_order_map.get(r.id),
+            "display_status": get_display_status(r.status, work_order_map.get(r.id)),
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "phone": r.phone,
-            "consultant_name": r.consultant_name
+            "consultant_name": r.consultant_name,
+            "onboarding_route": r.onboarding_route.value if hasattr(r.onboarding_route, 'value') else r.onboarding_route,
+            "role": r.role,
+            "cohf_status": r.cohf_status,
+            "cohf_aventus_signed_date": r.cohf_aventus_signed_date.isoformat() if r.cohf_aventus_signed_date else None,
+            "quote_sheet_status": r.quote_sheet_status
         }
         for r in results
     ]
@@ -194,15 +285,23 @@ async def list_contractors_summary(
 @router.get("/{contractor_id}/signed-contract")
 async def get_signed_contract(
     contractor_id: str,
+    request: Request,
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     """
-    Admin views the signed contract PDF
+    View the signed contract PDF
     Supports both Authorization header and query parameter token
     """
-    # Authenticate via token query parameter (for direct links)
-    if not token:
+    # Try to get token from query parameter first (for direct links)
+    # Then try Authorization header (for fetch requests)
+    auth_token = token
+    if not auth_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            auth_token = auth_header.split(" ")[1]
+
+    if not auth_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
@@ -212,7 +311,7 @@ async def get_signed_contract(
     from jose import JWTError, jwt
     from app.config import settings
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(auth_token, settings.secret_key, algorithms=[settings.algorithm])
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(
@@ -227,7 +326,18 @@ async def get_signed_contract(
 
     # Get user and verify role
     user = db.query(User).filter(User.email == email).first()
-    if not user or user.role not in ["admin", "superadmin", "consultant"]:
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view signed contracts"
+        )
+
+    # Allow admin/superadmin/consultant to view any contract
+    # Allow contractors to view only their own contract
+    is_staff = user.role in ["admin", "superadmin", "consultant"]
+    is_own_contract = user.role == "contractor" and user.contractor_id == contractor_id
+
+    if not is_staff and not is_own_contract:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view signed contracts"
@@ -286,15 +396,23 @@ async def get_signed_contract(
 @router.get("/{contractor_id}/contract-preview")
 async def get_contractor_contract_preview(
     contractor_id: str,
+    request: Request,
     token: str = Query(None),
     db: Session = Depends(get_db),
 ):
     """
     Generate and preview contractor contract PDF
-    Accepts authentication via query parameter for iframe compatibility
+    Accepts authentication via query parameter or Authorization header
     """
-    # Authenticate via token query parameter (for iframe)
-    if not token:
+    # Try to get token from query parameter first (for iframes/direct links)
+    # Then try Authorization header (for fetch requests)
+    auth_token = token
+    if not auth_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            auth_token = auth_header.split(" ")[1]
+
+    if not auth_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
@@ -303,7 +421,7 @@ async def get_contractor_contract_preview(
     # Verify JWT token
     from jose import JWTError, jwt
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(auth_token, settings.secret_key, algorithms=[settings.algorithm])
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(
@@ -317,7 +435,18 @@ async def get_contractor_contract_preview(
         )
 
     user = db.query(User).filter(User.email == email).first()
-    if not user or user.role not in ["consultant", "admin", "superadmin"]:
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized"
+        )
+
+    # Allow admin/superadmin/consultant to view any contract preview
+    # Allow contractors to view only their own contract preview
+    is_staff = user.role in ["admin", "superadmin", "consultant"]
+    is_own_contract = user.role == "contractor" and user.contractor_id == contractor_id
+
+    if not is_staff and not is_own_contract:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized"
@@ -1292,6 +1421,17 @@ async def get_contractor_work_order_pdf(
     """
     Generate and return work order PDF for preview
     """
+    # Allow admin/superadmin/consultant to view any work order
+    # Allow contractors to view only their own work order
+    is_staff = current_user.role in ["admin", "superadmin", "consultant"]
+    is_own_document = current_user.role == "contractor" and current_user.contractor_id == contractor_id
+
+    if not is_staff and not is_own_document:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this document"
+        )
+
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
     if not contractor:
@@ -2028,39 +2168,54 @@ async def delete_contractor(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Delete a contractor
+    Delete a contractor and all related records
     - Admins/Superadmins can delete any contractor
     - Consultants can only delete contractors they created
     - Cannot delete contractors that are signed, active, or suspended
     """
-    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+    try:
+        contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
-    if not contractor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contractor not found"
-        )
-
-    # Check permissions
-    if current_user.role == UserRole.CONSULTANT:
-        # Consultants can only delete their own contractors
-        if contractor.consultant_id != current_user.id:
+        if not contractor:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only cancel contractors you created"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Contractor not found"
             )
 
-    # Prevent deletion of contractors in certain statuses
-    if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE, ContractorStatus.SUSPENDED]:
+        # Check permissions
+        if current_user.role == UserRole.CONSULTANT:
+            # Consultants can only delete their own contractors
+            if contractor.consultant_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only delete contractors you created"
+                )
+
+        # Prevent deletion of contractors in certain statuses
+        if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE, ContractorStatus.SUSPENDED]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete contractor with status: {contractor.status.value}"
+            )
+
+        contractor_name = f"{contractor.first_name} {contractor.surname}"
+
+        # Delete the contractor (cascade will handle related records)
+        db.delete(contractor)
+        db.commit()
+
+        print(f"[DELETE] Contractor {contractor_name} (ID: {contractor_id}) deleted by {current_user.email}")
+        return {"message": f"Contractor {contractor_name} deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"[DELETE ERROR] Failed to delete contractor {contractor_id}: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete contractor with status: {contractor.status}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete contractor: {str(e)}"
         )
-
-    db.delete(contractor)
-    db.commit()
-
-    return {"message": "Contractor deleted successfully"}
 
 
 @router.post("/{contractor_id}/cancel")
@@ -2274,15 +2429,6 @@ async def get_contractor_documents(
                 "document_url": contractor.cohf_signed_document,
                 "uploaded_date": contractor.cohf_completed_date
             })
-
-    # Add submitted quote sheet (Saudi route) if available
-    if contractor.quote_sheet_status == "submitted" and contractor.quote_sheet_data:
-        documents.append({
-            "document_name": f"Cost Estimation Sheet - Submitted by {contractor.quote_sheet_third_party_name or 'Third Party'}",
-            "document_type": "quote_sheet",
-            "document_url": f"/api/v1/contractors/{contractor.id}/quote-sheet/pdf",
-            "uploaded_date": contractor.quote_sheet_third_party_signed_date
-        })
 
     # Add signed contract if available
     if contractor.status in [ContractorStatus.SIGNED, ContractorStatus.ACTIVE]:
@@ -3197,13 +3343,24 @@ async def reset_contractor_to_pending_signature(
 async def get_cohf_pdf(
     contractor_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Generate and download COHF PDF for a contractor (UAE route)
     Returns a 2-page A4 PDF document
     If COHF has been signed, redirects to the signed document
     """
+    # Allow admin/superadmin/consultant to view any COHF
+    # Allow contractors to view only their own COHF
+    is_staff = current_user.role in ["admin", "superadmin", "consultant"]
+    is_own_document = current_user.role == "contractor" and current_user.contractor_id == contractor_id
+
+    if not is_staff and not is_own_document:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this document"
+        )
+
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
     if not contractor:
@@ -4084,12 +4241,23 @@ async def update_quote_sheet(
 async def get_quote_sheet_pdf(
     contractor_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Generate and download Quote Sheet PDF for a contractor (Saudi route)
     Returns an A4 PDF document
     """
+    # Allow admin/superadmin/consultant to view any quote sheet
+    # Allow contractors to view only their own quote sheet
+    is_staff = current_user.role in ["admin", "superadmin", "consultant"]
+    is_own_document = current_user.role == "contractor" and current_user.contractor_id == contractor_id
+
+    if not is_staff and not is_own_document:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this document"
+        )
+
     contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
 
     if not contractor:
@@ -4282,6 +4450,7 @@ async def get_quote_sheet_by_token(
         "role": contractor.role,
         "location": contractor.location,
         "nationality": contractor.nationality,
+        "marital_status": contractor.marital_status,  # For auto-populating Status field
         "email": contractor.email,
         "phone": contractor.phone,
         "start_date": contractor.start_date.isoformat() if contractor.start_date else None,

@@ -65,7 +65,7 @@ def get_all_timesheets(
     return {
         "timesheets": result,
         "total": len(result),
-        "pending": len([ts for ts in timesheets if ts.status == TimesheetStatus.PENDING]),
+        "pending": len([ts for ts in timesheets if ts.status == TimesheetStatus.PENDING_APPROVAL]),
         "approved": len([ts for ts in timesheets if ts.status == TimesheetStatus.APPROVED]),
         "declined": len([ts for ts in timesheets if ts.status == TimesheetStatus.DECLINED]),
     }
@@ -152,7 +152,7 @@ def get_contractor_timesheets(
             for ts in timesheets
         ],
         "total": len(timesheets),
-        "pending": len([ts for ts in timesheets if ts.status == TimesheetStatus.PENDING]),
+        "pending": len([ts for ts in timesheets if ts.status == TimesheetStatus.PENDING_APPROVAL]),
         "approved": len([ts for ts in timesheets if ts.status == TimesheetStatus.APPROVED]),
         "declined": len([ts for ts in timesheets if ts.status == TimesheetStatus.DECLINED]),
     }
@@ -219,7 +219,7 @@ def create_timesheet(timesheet: TimesheetCreate, db: Session = Depends(get_db)):
         notes=timesheet.notes,
         manager_name=timesheet.manager_name,
         manager_email=timesheet.manager_email,
-        status=TimesheetStatus.PENDING,
+        status=TimesheetStatus.PENDING_APPROVAL,
         submitted_date=datetime.utcnow(),
         review_token=review_token,
         review_token_expiry=review_token_expiry
@@ -248,7 +248,7 @@ def create_timesheet(timesheet: TimesheetCreate, db: Session = Depends(get_db)):
         "holiday_days": timesheet.holiday_days,
         "unpaid_days": timesheet.unpaid_days,
         "submitted_date": datetime.utcnow().strftime("%B %d, %Y"),
-        "status": "pending",
+        "status": "pending_approval",
         "notes": timesheet.notes or ""
     }
 
@@ -352,7 +352,7 @@ async def upload_timesheet(
         notes=notes,
         manager_name=manager_name,
         manager_email=manager_email,
-        status=TimesheetStatus.PENDING,
+        status=TimesheetStatus.PENDING_APPROVAL,
         submitted_date=datetime.utcnow(),
         timesheet_file_url=timesheet_file_url,
         approval_file_url=approval_file_url,
@@ -540,7 +540,7 @@ def approve_timesheet_by_token(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Review link has expired")
 
     # Check if already processed
-    if timesheet.status != TimesheetStatus.PENDING:
+    if timesheet.status != TimesheetStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
             detail=f"Timesheet has already been {timesheet.status.value}"
@@ -589,7 +589,7 @@ def decline_timesheet_by_token(token: str, request: DeclineRequest, db: Session 
         raise HTTPException(status_code=400, detail="Review link has expired")
 
     # Check if already processed
-    if timesheet.status != TimesheetStatus.PENDING:
+    if timesheet.status != TimesheetStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
             detail=f"Timesheet has already been {timesheet.status.value}"

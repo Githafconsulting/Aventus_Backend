@@ -193,6 +193,6 @@ class QuoteSheet(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    contractor = relationship("Contractor", backref="quote_sheets")
+    contractor = relationship("Contractor", back_populates="quote_sheets")
     third_party = relationship("ThirdParty", backref="quote_sheets")
     consultant = relationship("User", backref="quote_sheets")

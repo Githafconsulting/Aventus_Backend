@@ -323,9 +323,11 @@ class Contractor(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
-    timesheets = relationship("Timesheet", back_populates="contractor")
-    contracts = relationship("Contract", back_populates="contractor")
-    payrolls = relationship("Payroll", back_populates="contractor")
-    payslips = relationship("Payslip", back_populates="contractor")
-    invoices = relationship("Invoice", back_populates="contractor")
+    # Relationships (cascade delete to clean up related records when contractor is deleted)
+    timesheets = relationship("Timesheet", back_populates="contractor", cascade="all, delete-orphan")
+    contracts = relationship("Contract", back_populates="contractor", cascade="all, delete-orphan")
+    payrolls = relationship("Payroll", back_populates="contractor", cascade="all, delete-orphan")
+    payslips = relationship("Payslip", back_populates="contractor", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="contractor", cascade="all, delete-orphan")
+    work_orders = relationship("WorkOrder", back_populates="contractor", cascade="all, delete-orphan")
+    quote_sheets = relationship("QuoteSheet", back_populates="contractor", cascade="all, delete-orphan")

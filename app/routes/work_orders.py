@@ -326,6 +326,7 @@ async def update_work_order_status(
 class ClientSignatureData(BaseModel):
     signature_type: str  # "typed" or "drawn"
     signature_data: str  # Name for typed, base64 for drawn
+    signer_name: str = ""  # Name of the person signing
 
 
 @router.get("/public/by-token/{signature_token}")
@@ -413,9 +414,11 @@ async def get_work_order_pdf_by_token(
         # Include signature data for signed work orders
         "client_signature_type": work_order.client_signature_type,
         "client_signature_data": work_order.client_signature_data,
+        "client_signer_name": work_order.client_signer_name or '',
         "client_signed_date": work_order.client_signed_date.strftime('%d %B %Y') if work_order.client_signed_date else '',
         "aventus_signature_type": work_order.aventus_signature_type,
         "aventus_signature_data": work_order.aventus_signature_data,
+        "aventus_signer_name": work_order.aventus_signer_name or '',
         "aventus_signed_date": work_order.aventus_signed_date.strftime('%d %B %Y') if work_order.aventus_signed_date else '',
     }
 
@@ -469,6 +472,7 @@ async def sign_work_order(
         # Update work order with signature
         work_order.client_signature_type = signature_data.signature_type
         work_order.client_signature_data = signature_data.signature_data
+        work_order.client_signer_name = signature_data.signer_name
         work_order.client_signed_date = datetime.now(timezone.utc)
         work_order.status = WorkOrderStatus.PENDING_AVENTUS_SIGNATURE
 
@@ -496,8 +500,10 @@ async def sign_work_order(
                     "pay_rate": work_order.pay_rate,
                     "currency": work_order.currency,
                     "project_name": work_order.project_name,
+                    "rate_type": getattr(contractor, 'rate_type', 'monthly') or 'monthly',
                     "client_signature_type": work_order.client_signature_type,
                     "client_signature_data": work_order.client_signature_data,
+                    "client_signer_name": work_order.client_signer_name,
                     "client_signed_date": work_order.client_signed_date.strftime("%d %B %Y") if work_order.client_signed_date else "",
                 }
 
@@ -638,6 +644,7 @@ async def counter_sign_work_order(
     # Add Aventus signature
     work_order.aventus_signature_type = signature_data.signature_type
     work_order.aventus_signature_data = signature_data.signature_data
+    work_order.aventus_signer_name = current_user.name  # Use current user's name as signer
     work_order.aventus_signed_date = datetime.now(timezone.utc)
     work_order.aventus_signed_by = current_user.id
     work_order.status = WorkOrderStatus.COMPLETED

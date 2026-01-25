@@ -69,11 +69,13 @@ class WorkOrder(Base):
     client_signature_token = Column(String, unique=True, nullable=True, index=True)
     client_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     client_signature_data = Column(String, nullable=True)  # Name or base64 image
+    client_signer_name = Column(String, nullable=True)  # Name of person who signed
     client_signed_date = Column(DateTime, nullable=True)
 
     # Aventus Admin Signature (Counter-signature)
     aventus_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     aventus_signature_data = Column(String, nullable=True)  # Name or base64 image
+    aventus_signer_name = Column(String, nullable=True)  # Name of admin who signed
     aventus_signed_date = Column(DateTime, nullable=True)
     aventus_signed_by = Column(String, ForeignKey("users.id"), nullable=True)  # Admin who signed
 
@@ -92,7 +94,7 @@ class WorkOrder(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    contractor = relationship("Contractor", backref="work_orders")
+    contractor = relationship("Contractor", back_populates="work_orders")
     third_party = relationship("ThirdParty", backref="work_orders")
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])

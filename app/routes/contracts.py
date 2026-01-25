@@ -8,8 +8,12 @@ from datetime import datetime, timedelta
 from app.database import get_db
 from app.models.contract import Contract, ContractTemplate, ContractStatus
 from app.models.contractor import Contractor
-from app.utils.email import send_contract_email, send_activation_email
+from app.models.user import User, UserRole
+from app.utils.auth import get_current_active_user, require_role
+from app.utils.email import send_contract_email, send_activation_email, send_signed_contract_email
 from app.utils.contract_pdf_generator import generate_consultant_contract_pdf
+from app.utils.storage import upload_file
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel
 import secrets
 import string
@@ -45,6 +49,12 @@ class ContractSign(BaseModel):
 
 class ContractActivate(BaseModel):
     temporary_password: str
+
+
+class AventusCounterSign(BaseModel):
+    signature_type: str  # "typed" or "drawn"
+    signature_data: str
+    signer_name: str = "Richard"  # Default to Richard
 
 
 def generate_token(length: int = 32) -> str:
@@ -333,7 +343,7 @@ def sign_contract(
     signature: ContractSign,
     db: Session = Depends(get_db)
 ):
-    """Contractor signs the contract and auto-applies Aventus signature"""
+    """Contractor signs the contract - awaits Aventus counter-signature"""
     contract = db.query(Contract).filter(Contract.contract_token == token).first()
 
     if not contract:
@@ -343,31 +353,162 @@ def sign_contract(
     if contract.token_expiry and datetime.utcnow() > contract.token_expiry:
         raise HTTPException(status_code=400, detail="Contract token has expired")
 
+    # Check if already signed
+    if contract.status in [ContractStatus.PENDING_AVENTUS_SIGNATURE, ContractStatus.SIGNED, ContractStatus.VALIDATED, ContractStatus.ACTIVATED]:
+        raise HTTPException(status_code=400, detail="Contract has already been signed")
+
     # Update contract with contractor signature
     contract.contractor_signature_type = signature.signature_type
     contract.contractor_signature_data = signature.signature_data
     contract.contractor_signed_date = datetime.utcnow()
     contract.contractor_notes = signature.notes
-    contract.status = ContractStatus.SIGNED
-
-    # Auto-add Aventus signature from settings
-    # Get the superadmin signature from the contractor model (stored in settings)
-    # For now, we'll get the first superadmin/admin user's signature
-    superadmin = db.query(Contractor).filter(
-        Contractor.superadmin_signature_type.isnot(None)
-    ).first()
-
-    if superadmin:
-        contract.aventus_signature_type = superadmin.superadmin_signature_type
-        contract.aventus_signature_data = superadmin.superadmin_signature_data
-        contract.aventus_signed_date = datetime.utcnow()
+    # Set status to pending Aventus counter-signature
+    contract.status = ContractStatus.PENDING_AVENTUS_SIGNATURE
 
     db.commit()
     db.refresh(contract)
 
     return {
-        "message": "Contract signed successfully",
-        "contract_id": contract.id
+        "message": "Contract signed successfully. Awaiting Aventus counter-signature.",
+        "contract_id": contract.id,
+        "status": "pending_aventus_signature"
+    }
+
+
+@router.post("/{contract_id}/counter-sign")
+def counter_sign_contract(
+    contract_id: int,
+    signature_data: AventusCounterSign,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """
+    Admin counter-signs a contract that has been signed by contractor.
+    This completes the signing process, emails signed copy to contractor,
+    and stores the signed contract in contractor's documents.
+    """
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+
+    # Check if contract is pending Aventus signature
+    if contract.status != ContractStatus.PENDING_AVENTUS_SIGNATURE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contract is not pending Aventus signature. Current status: {contract.status.value}"
+        )
+
+    # Get contractor
+    contractor = db.query(Contractor).filter(Contractor.id == contract.contractor_id).first()
+    if not contractor:
+        raise HTTPException(status_code=404, detail="Contractor not found")
+
+    # Add Aventus signature
+    contract.aventus_signature_type = signature_data.signature_type
+    contract.aventus_signature_data = signature_data.signature_data
+    contract.aventus_signer_name = signature_data.signer_name
+    contract.aventus_signed_date = datetime.utcnow()
+    contract.aventus_signed_by = current_user.id
+    contract.status = ContractStatus.SIGNED
+
+    db.commit()
+    db.refresh(contract)
+
+    # Generate signed contract PDF
+    try:
+        cds_data = contractor.cds_form_data or {}
+        contractor_data = {
+            'first_name': contractor.first_name,
+            'surname': contractor.surname,
+            'client_name': cds_data.get('clientName', contract.client_name or contractor.client_name or '[Client Name]'),
+            'client_address': cds_data.get('clientAddress', contract.client_address or '[Client Address]'),
+            'role': cds_data.get('role', contract.job_title or contractor.role or '[Job Title]'),
+            'location': cds_data.get('location', contract.working_location or contractor.location or '[Location]'),
+            'duration': contractor.duration or contract.duration or '6 months',
+            'start_date': contractor.start_date or contract.commencement_date or '[Start Date]',
+            'candidate_pay_rate': contractor.candidate_pay_rate or contract.contract_rate or '[Day Rate]',
+            'currency': contractor.currency or 'USD',
+        }
+
+        # Generate the PDF with both signatures
+        pdf_buffer = generate_consultant_contract_pdf(
+            contractor_data,
+            contractor_signature_type=contract.contractor_signature_type,
+            contractor_signature_data=contract.contractor_signature_data,
+            superadmin_signature_type=contract.aventus_signature_type,
+            superadmin_signature_data=contract.aventus_signature_data,
+            signed_date=contract.aventus_signed_date.strftime('%d %B %Y') if contract.aventus_signed_date else ''
+        )
+
+        # Upload to storage
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        filename = f"signed_contract_{contractor.first_name}_{contractor.surname}_{timestamp}.pdf"
+        folder = f"contractor-documents/{contractor.id}"
+
+        pdf_url = upload_file(pdf_buffer, filename, folder)
+
+        # Add to contractor's other_documents
+        other_docs = list(contractor.other_documents or [])
+        other_docs.append({
+            "type": "signed_contract",
+            "name": f"Signed Contract - {contractor.first_name} {contractor.surname}",
+            "url": pdf_url,
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "contract_id": contract.id
+        })
+        contractor.other_documents = other_docs
+        flag_modified(contractor, "other_documents")
+
+        db.commit()
+        print(f"Signed contract PDF saved to contractor documents: {pdf_url}")
+
+        # Email signed copy to contractor
+        try:
+            send_signed_contract_email(
+                contractor_email=contractor.email,
+                contractor_name=f"{contractor.first_name} {contractor.surname}",
+                pdf_url=pdf_url
+            )
+            print(f"Signed contract email sent to {contractor.email}")
+        except Exception as email_error:
+            print(f"Warning: Failed to send signed contract email: {email_error}")
+
+    except Exception as pdf_error:
+        print(f"Warning: Failed to save signed contract PDF: {pdf_error}")
+
+    return {
+        "message": "Contract counter-signed successfully. Signed copy emailed to contractor.",
+        "contract_id": contract.id,
+        "contractor_email": contractor.email,
+        "aventus_signed_by": current_user.name,
+        "aventus_signed_date": contract.aventus_signed_date.isoformat(),
+        "status": "signed"
+    }
+
+
+@router.get("/pending-counter-signature")
+def get_pending_counter_signature_contracts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["admin", "superadmin"]))
+):
+    """Get all contracts pending Aventus counter-signature"""
+    contracts = db.query(Contract).filter(
+        Contract.status == ContractStatus.PENDING_AVENTUS_SIGNATURE
+    ).order_by(Contract.contractor_signed_date.desc()).all()
+
+    return {
+        "contracts": [
+            {
+                "id": c.id,
+                "contractor_id": c.contractor_id,
+                "consultant_name": c.consultant_name,
+                "client_name": c.client_name,
+                "job_title": c.job_title,
+                "contractor_signed_date": c.contractor_signed_date.isoformat() if c.contractor_signed_date else None,
+            }
+            for c in contracts
+        ]
     }
 
 

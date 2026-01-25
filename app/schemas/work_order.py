@@ -44,9 +44,26 @@ class WorkOrderUpdate(BaseModel):
 class WorkOrderResponse(WorkOrderBase):
     id: str
     work_order_number: str
+    client_name: Optional[str] = None
+    contractor_name: Optional[str] = None
+    project_name: Optional[str] = None
+    role: Optional[str] = None
+    duration: Optional[str] = None
+    currency: Optional[str] = None
+    charge_rate: Optional[str] = None
+    pay_rate: Optional[str] = None
     documents: Optional[List[Dict[str, Any]]] = []
     created_by: str
     approved_by: Optional[str] = None
+    client_signature_type: Optional[str] = None
+    client_signature_data: Optional[str] = None
+    client_signer_name: Optional[str] = None
+    client_signed_date: Optional[datetime] = None
+    aventus_signature_type: Optional[str] = None
+    aventus_signature_data: Optional[str] = None
+    aventus_signer_name: Optional[str] = None
+    aventus_signed_date: Optional[datetime] = None
+    aventus_signed_by: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

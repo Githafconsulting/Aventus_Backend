@@ -142,6 +142,21 @@ def send_activation_email(
     return _send_email(contractor_email, f"Welcome to {settings.company_name} - Your Account is Ready", html)
 
 
+def send_signed_contract_email(
+    contractor_email: str,
+    contractor_name: str,
+    pdf_url: str
+) -> bool:
+    """Send signed contract copy to contractor."""
+    html = _render_template(
+        "signed_contract",
+        contractor_name=contractor_name,
+        pdf_url=pdf_url,
+        login_link=settings.frontend_url,
+    )
+    return _send_email(contractor_email, f"Your Signed Contract - {settings.company_name}", html)
+
+
 def send_document_upload_email(
     contractor_email: str,
     contractor_name: str,

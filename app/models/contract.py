@@ -13,7 +13,8 @@ class ContractStatus(str, enum.Enum):
     DRAFT = "draft"
     SENT = "sent"
     REVIEWED = "reviewed"
-    SIGNED = "signed"
+    PENDING_AVENTUS_SIGNATURE = "pending_aventus_signature"  # Contractor signed, awaiting Aventus counter-sign
+    SIGNED = "signed"  # Both parties signed
     VALIDATED = "validated"
     ACTIVATED = "activated"
     DECLINED = "declined"
@@ -78,10 +79,12 @@ class Contract(Base):
     contractor_signed_date = Column(DateTime(timezone=True), nullable=True)
     contractor_notes = Column(Text, nullable=True)
 
-    # Aventus auto-signature
+    # Aventus counter-signature
     aventus_signature_type = Column(String, nullable=True)  # "typed" or "drawn"
     aventus_signature_data = Column(Text, nullable=True)
+    aventus_signer_name = Column(String, nullable=True)  # Name of person who counter-signed (e.g., Richard)
     aventus_signed_date = Column(DateTime(timezone=True), nullable=True)
+    aventus_signed_by = Column(String, nullable=True)  # User ID who counter-signed
 
     # Admin validation
     validated_date = Column(DateTime(timezone=True), nullable=True)

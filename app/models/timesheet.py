@@ -5,7 +5,7 @@ import enum
 from app.database import Base
 
 class TimesheetStatus(str, enum.Enum):
-    PENDING = "pending"
+    PENDING_APPROVAL = "pending_approval"
     APPROVED = "approved"
     DECLINED = "declined"
 
@@ -13,7 +13,7 @@ class Timesheet(Base):
     __tablename__ = "timesheets"
 
     id = Column(Integer, primary_key=True, index=True)
-    contractor_id = Column(Integer, ForeignKey("contractors.id"), nullable=False)
+    contractor_id = Column(String, ForeignKey("contractors.id"), nullable=False)
 
     # Period information
     month = Column(String, nullable=False)  # e.g., "November 2024"
@@ -32,7 +32,7 @@ class Timesheet(Base):
     unpaid_days = Column(Integer, default=0)
 
     # Status and approval
-    status = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.PENDING)
+    status = Column(SQLEnum(TimesheetStatus), default=TimesheetStatus.PENDING_APPROVAL)
     submitted_date = Column(DateTime, nullable=True)
     approved_date = Column(DateTime, nullable=True)
     declined_date = Column(DateTime, nullable=True)

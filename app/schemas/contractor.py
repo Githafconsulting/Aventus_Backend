@@ -229,6 +229,10 @@ class ContractorResponse(BaseModel):
     quote_sheet_data: Optional[Dict[str, Any]] = None
     quote_sheet_third_party_name: Optional[str] = None
 
+    # COHF fields (UAE route)
+    cohf_status: Optional[str] = None
+    cohf_aventus_signed_date: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
@@ -431,6 +435,10 @@ class ContractorDetailResponse(BaseModel):
 
     # Costing sheet data
     costing_sheet_data: Optional[Dict[str, Any]] = None
+
+    # Quote Sheet (Saudi Route)
+    quote_sheet_data: Optional[Dict[str, Any]] = None
+    quote_sheet_status: Optional[str] = None
 
     # COHF (Cost of Hire Form) - UAE Route
     cohf_data: Union[Dict[str, Any], None] = None

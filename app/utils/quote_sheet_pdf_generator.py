@@ -246,10 +246,11 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     company_name_style = ParagraphStyle(
         'CompanyName',
         parent=cell_style,
-        fontSize=12,
+        fontSize=11,
         textColor=primary_color,
         alignment=1,  # Center
         fontName='Helvetica-Bold',
+        wordWrap='CJK',  # Prevent word wrapping
     )
     subtitle_style = ParagraphStyle(
         'Subtitle',
@@ -262,7 +263,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     center_element = Table([
         [Paragraph("FIRST NATIONAL HUMAN RESOURCES COMPANY", company_name_style)],
         [Paragraph("Cost Estimation Sheet", subtitle_style)],
-    ], colWidths=[80*mm])
+    ], colWidths=[100*mm])
     center_element.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -270,7 +271,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
 
     header_data = [[left_element, center_element, right_element]]
 
-    header_table = Table(header_data, colWidths=[50*mm, 90*mm, 50*mm])
+    header_table = Table(header_data, colWidths=[45*mm, 100*mm, 45*mm])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -487,7 +488,6 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
             one_time = get_num(f'{prefix}_one_time')
             annual = get_num(f'{prefix}_annual')
             monthly = get_num(f'{prefix}_monthly')
-            remarks = get_val(f'{prefix}_remarks', '')
 
             total_one_time += one_time or 0
             total_annual += annual or 0
@@ -498,7 +498,7 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
                 Paragraph(format_currency(one_time), cell_right_style),
                 Paragraph(format_currency(annual), cell_right_style),
                 Paragraph(format_currency(monthly), cell_right_style),
-                Paragraph(remarks, cell_style),
+                Paragraph("", cell_style),  # Remarks column cleared
             ])
 
         # Total row
@@ -605,18 +605,18 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
     total_annual = get_num('totalAnnual') or total_annual
     total_monthly = get_num('totalMonthly') or total_monthly
 
-    # Service charge
-    service_charge = get_num('fnrco_service_charge', 1250.00) or 1250.00
+    # Service charge (no default - user must enter)
+    service_charge = get_num('fnrco_service_charge', 0) or 0
 
     # 15% VAT calculation (on Medical Insurance + Service Charge only)
     employee_medical_annual = get_num('employee_medical_annual', 0) or 0
     family_medical_annual = get_num('family_medical_annual', 0) or 0
     total_medical_insurance = employee_medical_annual + family_medical_annual
-    vat_on_annual = total_medical_insurance * 0.15
-    vat_on_monthly = service_charge * 0.15
+    vat_on_annual = total_medical_insurance * 0.15 if total_medical_insurance > 0 else 0
+    vat_on_monthly = service_charge * 0.15 if service_charge > 0 else 0
 
     # Total invoice amount
-    total_invoice = total_monthly + service_charge + vat_on_monthly
+    total_invoice = total_monthly + service_charge + vat_on_monthly if (total_monthly > 0 or service_charge > 0) else 0
 
     # Summary table
     summary_data = [
@@ -625,28 +625,28 @@ def generate_quote_sheet_pdf(quote_sheet_data: dict) -> BytesIO:
             Paragraph(f"<b>{format_currency(total_one_time)}</b>", cell_right_bold_style),
             Paragraph(f"<b>{format_currency(total_annual)}</b>", cell_right_bold_style),
             Paragraph(f"<b>{format_currency(total_monthly)}</b>", cell_right_bold_style),
-            Paragraph("Payroll Benefits + Monthly Cost", cell_style),
+            Paragraph("", cell_style),
         ],
         [
             Paragraph("<b>FNRCO SERVICE CHARGE</b>", cell_bold_style),
             Paragraph("", cell_style),
             Paragraph("", cell_style),
             Paragraph(f"<b>{format_currency(service_charge)}</b>", cell_right_bold_style),
-            Paragraph("Per Person Per Month", cell_style),
+            Paragraph("", cell_style),
         ],
         [
             Paragraph("<b>15% VAT - Applicable on Medical Insurance and Service Charge Only</b>", cell_bold_style),
             Paragraph("", cell_style),
             Paragraph(f"{format_currency(vat_on_annual)}", cell_right_style),
             Paragraph(f"{format_currency(vat_on_monthly)}", cell_right_style),
-            Paragraph("15% Vat", cell_style),
+            Paragraph("", cell_style),
         ],
         [
             Paragraph("<b>TOTAL INVOICED AMOUNT INCLUDING 15% VAT</b>", ParagraphStyle('White', fontSize=8, fontName='Helvetica-Bold', textColor=colors.white)),
             Paragraph("", cell_style),
             Paragraph("", cell_style),
             Paragraph(f"<b>{format_currency(total_invoice)}</b>", ParagraphStyle('WhiteRB', fontSize=10, fontName='Helvetica-Bold', textColor=colors.white, alignment=TA_RIGHT)),
-            Paragraph("Regular Monthly", ParagraphStyle('WhiteS', fontSize=7, fontName='Helvetica', textColor=colors.white)),
+            Paragraph("", ParagraphStyle('WhiteS', fontSize=7, fontName='Helvetica', textColor=colors.white)),
         ],
     ]
 

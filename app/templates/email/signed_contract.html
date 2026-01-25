@@ -1,0 +1,46 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    Great news! Your employment contract with {{ company_name }} has been fully executed. Both your signature and the company counter-signature have been applied.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">📝</div>
+    <div class="document-title">Contract Signed Successfully</div>
+    <p class="document-desc">
+        Your signed contract is now available for download and has been stored in your documents folder.
+    </p>
+</div>
+
+<div class="cta-container">
+    <a href="{{ pdf_url }}" class="cta-button">Download Signed Contract</a>
+</div>
+
+<div class="notice">
+    <strong>Important</strong>
+    <p>Please keep a copy of your signed contract for your records. You can also access it anytime through your contractor dashboard.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    <strong>What happens next:</strong>
+</p>
+<ul style="margin-left: 20px; color: #4a4a4a; font-size: 14px;">
+    <li>Your account will be activated shortly</li>
+    <li>You will receive login credentials to access your dashboard</li>
+    <li>You can view all your documents and contracts in the dashboard</li>
+</ul>
+
+<div class="cta-container">
+    <a href="{{ login_link }}" class="cta-button" style="background-color: #6b7280;">Go to Dashboard</a>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} Team</span>
+</div>
+{% endblock %}

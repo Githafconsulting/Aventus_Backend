@@ -91,12 +91,13 @@ def generate_timesheet_pdf(timesheet_data: dict) -> BytesIO:
     manager_email = timesheet_data.get('manager_email', '[Manager Email]')
 
     # Summary data
-    total_days = timesheet_data.get('total_days', 0)
     work_days = timesheet_data.get('work_days', 0)
     sick_days = timesheet_data.get('sick_days', 0)
     vacation_days = timesheet_data.get('vacation_days', 0)
     holiday_days = timesheet_data.get('holiday_days', 0)
     unpaid_days = timesheet_data.get('unpaid_days', 0)
+    # Calculate total days as sum of work, sick, vacation, and holiday
+    total_days = (work_days or 0) + (sick_days or 0) + (vacation_days or 0) + (holiday_days or 0)
 
     submitted_date = timesheet_data.get('submitted_date', '')
     status = timesheet_data.get('status', 'pending')
@@ -152,12 +153,13 @@ def generate_timesheet_pdf(timesheet_data: dict) -> BytesIO:
     # Summary Section
     elements.append(Paragraph("<b>Summary</b>", section_style))
 
-    # Summary table with colored indicators
+    # Summary table with colored indicators - Total Days at bottom as sum
     summary_data = [
         ['Category', 'Days', 'Category', 'Days'],
-        ['Total Days Worked', str(total_days), 'Work Days', str(work_days)],
-        ['Sick Days', str(sick_days), 'Vacation Days', str(vacation_days)],
-        ['Public Holidays', str(holiday_days), 'Unpaid Leave', str(unpaid_days)],
+        ['Work Days', str(work_days), 'Sick Days', str(sick_days)],
+        ['Vacation Days', str(vacation_days), 'Public Holidays', str(holiday_days)],
+        ['Unpaid Leave', str(unpaid_days), '', ''],
+        ['', '', 'TOTAL DAYS', str(total_days)],
     ]
 
     summary_table = Table(summary_data, colWidths=[45*mm, 35*mm, 45*mm, 35*mm])
@@ -173,7 +175,12 @@ def generate_timesheet_pdf(timesheet_data: dict) -> BytesIO:
         ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BACKGROUND', (0, 1), (-1, -1), light_gray),
+        ('BACKGROUND', (0, 1), (-1, 3), light_gray),
+        # Total row styling - make it stand out
+        ('BACKGROUND', (2, 4), (3, 4), orange),
+        ('TEXTCOLOR', (2, 4), (3, 4), colors.white),
+        ('FONTNAME', (2, 4), (3, 4), 'Helvetica-Bold'),
+        ('FONTSIZE', (2, 4), (3, 4), 11),
         # Grid
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
@@ -226,7 +233,7 @@ def generate_timesheet_pdf(timesheet_data: dict) -> BytesIO:
     ])))
     elements.append(Spacer(1, 5*mm))
 
-    # Signature Section
+    # Signature Section - Manager Only
     sig_header_style = ParagraphStyle(
         'SigHeader',
         parent=body_style,
@@ -235,32 +242,26 @@ def generate_timesheet_pdf(timesheet_data: dict) -> BytesIO:
         spaceAfter=4
     )
 
-    # Two-column signature layout
-    contractor_col = [
-        Paragraph("<b>CONTRACTOR:</b>", sig_header_style),
-        Spacer(1, 2*mm),
-        Paragraph("Signature: _____________________________", body_style),
-        Spacer(1, 1*mm),
-        Paragraph(f"Name: {contractor_name}", body_style),
-        Spacer(1, 1*mm),
-        Paragraph(f"Date: {submitted_date}", body_style),
-    ]
-
-    manager_col = [
+    # Single manager signature (contractor does not sign)
+    manager_sig_col = [
         Paragraph("<b>MANAGER APPROVAL:</b>", sig_header_style),
-        Spacer(1, 2*mm),
+        Spacer(1, 3*mm),
         Paragraph("Signature: _____________________________", body_style),
-        Spacer(1, 1*mm),
+        Spacer(1, 2*mm),
         Paragraph(f"Name: {manager_name}", body_style),
-        Spacer(1, 1*mm),
+        Spacer(1, 2*mm),
         Paragraph("Date: _____________________________", body_style),
     ]
 
-    signature_table = Table([[contractor_col, manager_col]], colWidths=[80*mm, 80*mm])
+    signature_table = Table([[manager_sig_col]], colWidths=[160*mm])
     signature_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('BACKGROUND', (0, 0), (-1, -1), light_gray),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
     ]))
     elements.append(signature_table)
     elements.append(Spacer(1, 5*mm))

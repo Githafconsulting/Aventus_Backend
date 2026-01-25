@@ -356,7 +356,7 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
         [Paragraph("<b>Medical Insurance</b>", label_style), Paragraph(get_val('medical_insurance_cost', get_val('medical', '')), value_style)],
         [Paragraph("<b>Visa / Labour Card</b>", label_style), Paragraph(get_val('visa_labour_card', ''), value_style)],
         [Paragraph("<b>EOSB</b>", label_style), Paragraph(get_val('eosb', ''), value_style)],
-        [Paragraph("<b>Management Fee</b>", label_style), Paragraph(get_val('management_fee', ''), value_style)],
+        [Paragraph("<b>Service Charge</b>", label_style), Paragraph(get_val('management_fee', ''), value_style)],
     ]
     rem_table = Table(rem_data, colWidths=[50*mm, 120*mm])
     rem_table.setStyle(TableStyle([
