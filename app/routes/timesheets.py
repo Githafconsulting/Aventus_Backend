@@ -529,7 +529,7 @@ def get_timesheet_by_token(token: str, db: Session = Depends(get_db)):
 # Approve timesheet (public - via token)
 @router.post("/review/{token}/approve")
 def approve_timesheet_by_token(token: str, db: Session = Depends(get_db)):
-    """Approve timesheet via review token"""
+    """Approve timesheet via review token and auto-calculate payroll"""
     timesheet = db.query(Timesheet).filter(Timesheet.review_token == token).first()
 
     if not timesheet:
@@ -553,6 +553,15 @@ def approve_timesheet_by_token(token: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(timesheet)
 
+    # Auto-calculate payroll
+    payroll_id = None
+    try:
+        from app.routes.payroll import auto_calculate_payroll
+        payroll_id = auto_calculate_payroll(timesheet.id, db)
+        print(f"[INFO] Auto-calculated payroll {payroll_id} for timesheet {timesheet.id}")
+    except Exception as e:
+        print(f"[WARNING] Failed to auto-calculate payroll: {e}")
+
     # Create notification for contractor
     try:
         from app.models.user import User
@@ -568,7 +577,8 @@ def approve_timesheet_by_token(token: str, db: Session = Depends(get_db)):
     return {
         "message": "Timesheet approved successfully",
         "status": timesheet.status.value,
-        "approved_date": timesheet.approved_date.isoformat()
+        "approved_date": timesheet.approved_date.isoformat(),
+        "payroll_id": payroll_id
     }
 
 

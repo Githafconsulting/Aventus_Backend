@@ -234,6 +234,143 @@ def _get_previous_month_timesheet(contractor_id: str, current_period: str, db: S
         return None
 
 
+def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
+    """
+    Auto-calculate payroll for a timesheet. Called when timesheet is approved.
+    Returns payroll ID if successful, None if failed.
+    """
+    # Check if timesheet exists
+    timesheet = db.query(Timesheet).filter(Timesheet.id == timesheet_id).first()
+    if not timesheet:
+        return None
+
+    # Check if payroll already exists
+    existing = db.query(Payroll).filter(Payroll.timesheet_id == timesheet_id).first()
+    if existing:
+        return existing.id  # Already calculated
+
+    # Get contractor
+    contractor = db.query(Contractor).filter(Contractor.id == timesheet.contractor_id).first()
+    if not contractor:
+        return None
+
+    # Get all contractor info
+    info = _get_contractor_full_info(contractor, db)
+
+    # Determine rate type
+    rate_type = RateType.MONTHLY if info["rate_type"] == "monthly" else RateType.DAILY
+
+    # Get period info
+    period = timesheet.month
+    total_calendar_days = _get_calendar_days_in_month(period)
+
+    # Days worked from timesheet
+    days_worked = timesheet.work_days or 0
+
+    # Get previous month data
+    prev_timesheet = _get_previous_month_timesheet(contractor.id, period, db)
+    previous_month_days_worked = prev_timesheet.work_days if prev_timesheet else 0
+
+    # Parse year from period for leave calculations
+    try:
+        period_date = datetime.strptime(period, "%B %Y")
+        current_year = period_date.year
+    except:
+        current_year = datetime.now().year
+
+    # Basic calculation
+    monthly_rate = info["monthly_rate"]
+    day_rate = info["day_rate"]
+
+    if rate_type == RateType.MONTHLY:
+        if not monthly_rate:
+            return None
+        prorata_day_rate = monthly_rate / total_calendar_days if total_calendar_days > 0 else 0
+        gross_pay = monthly_rate
+    else:
+        if not day_rate:
+            return None
+        prorata_day_rate = day_rate
+        gross_pay = days_worked * day_rate
+
+    # Leave calculations (using defaults - 0 for auto-calculation)
+    sick_days_used = timesheet.sick_days or 0
+    vacation_days_used = timesheet.vacation_days or 0
+    unpaid_leave_days = timesheet.unpaid_days or 0
+
+    sick_leave_deductible = 0
+    vacation_leave_deductible = 0
+    unpaid_leave_deductible = unpaid_leave_days * prorata_day_rate if rate_type == RateType.MONTHLY else 0
+    total_leave_deductibles = sick_leave_deductible + vacation_leave_deductible + unpaid_leave_deductible
+
+    # Net salary calculation
+    expenses_reimbursement = 0  # Default to 0 for auto-calculation
+    if rate_type == RateType.MONTHLY:
+        prorata_pay = (gross_pay / total_calendar_days) * days_worked if total_calendar_days > 0 else 0
+        net_salary = prorata_pay - total_leave_deductibles + expenses_reimbursement
+    else:
+        net_salary = gross_pay + expenses_reimbursement
+
+    # Accruals (default to 0)
+    accrual_gosi = 0
+    accrual_salary_transfer = 0
+    accrual_admin_costs = 0
+    accrual_other = 0
+    total_accruals = accrual_gosi + accrual_salary_transfer + accrual_admin_costs + accrual_other
+
+    # Management fee
+    management_fee = info["management_fee"]
+    invoice_subtotal = net_salary + total_accruals + management_fee
+
+    # VAT calculation
+    vat_rate = _get_vat_rate(info["country"])
+    vat_amount = invoice_subtotal * vat_rate
+    total_invoice = invoice_subtotal + vat_amount
+
+    # Create payroll record
+    payroll = Payroll(
+        timesheet_id=timesheet_id,
+        contractor_id=contractor.id,
+        period=period,
+        rate_type=rate_type,
+        currency=info["currency"],
+        monthly_rate=monthly_rate,
+        day_rate=day_rate,
+        prorata_day_rate=prorata_day_rate,
+        total_calendar_days=total_calendar_days,
+        days_worked=days_worked,
+        previous_month_days_worked=previous_month_days_worked,
+        gross_pay=gross_pay,
+        sick_days_used=sick_days_used,
+        sick_leave_deductible=sick_leave_deductible,
+        vacation_days_used=vacation_days_used,
+        vacation_leave_deductible=vacation_leave_deductible,
+        unpaid_leave_days=unpaid_leave_days,
+        unpaid_leave_deductible=unpaid_leave_deductible,
+        total_leave_deductibles=total_leave_deductibles,
+        expenses_reimbursement=expenses_reimbursement,
+        net_salary=net_salary,
+        accrual_gosi=accrual_gosi,
+        accrual_salary_transfer=accrual_salary_transfer,
+        accrual_admin_costs=accrual_admin_costs,
+        accrual_other=accrual_other,
+        total_accruals=total_accruals,
+        management_fee=management_fee,
+        invoice_subtotal=invoice_subtotal,
+        vat_rate=vat_rate,
+        vat_amount=vat_amount,
+        total_invoice=total_invoice,
+        status=PayrollStatus.CALCULATED,
+        calculated_at=datetime.utcnow(),
+    )
+
+    db.add(payroll)
+    db.commit()
+    db.refresh(payroll)
+
+    return payroll.id
+
+
 @router.get("/ready")
 def get_timesheets_ready_for_payroll(
     db: Session = Depends(get_db)
