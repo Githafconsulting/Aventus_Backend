@@ -106,6 +106,56 @@ def _send_email_with_attachment(to: str, subject: str, html: str, attachment_con
         return False
 
 
+def send_email_with_attachments(to_email: str, subject: str, body: str, attachments: list) -> bool:
+    """
+    Send email with multiple attachments.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        body: HTML body content
+        attachments: List of dicts with 'filename', 'content' (bytes), and 'content_type'
+    """
+    import os
+    import base64
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+
+    api_key = os.getenv("RESEND_API_KEY")
+    from_email = os.getenv("FROM_EMAIL")
+
+    if not api_key:
+        print("[EMAIL] ERROR: RESEND_API_KEY not set")
+        return False
+
+    try:
+        resend.api_key = api_key
+
+        # Format attachments for Resend
+        formatted_attachments = []
+        for att in attachments:
+            formatted_attachments.append({
+                "filename": att["filename"],
+                "content": base64.b64encode(att["content"]).decode('utf-8'),
+            })
+
+        params = {
+            "from": from_email,
+            "to": [to_email] if isinstance(to_email, str) else to_email,
+            "subject": subject,
+            "html": body,
+            "attachments": formatted_attachments
+        }
+
+        resend.Emails.send(params)
+        print(f"[EMAIL] Sent to {to_email} with {len(attachments)} attachment(s): {subject}")
+        return True
+    except Exception as e:
+        print(f"[EMAIL] ERROR sending with attachments: {str(e)}")
+        return False
+
+
 # =============================================================================
 # Contract & Onboarding Emails
 # =============================================================================

@@ -298,17 +298,25 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
     vacation_days_used = timesheet.vacation_days or 0
     unpaid_leave_days = timesheet.unpaid_days or 0
 
+    # Calculate leave balance (positive means has available leave)
+    leave_allowance = info.get("leave_allowance", 0) or 0
+    leave_taken = sick_days_used + vacation_days_used
+    leave_balance = leave_allowance - leave_taken
+
     sick_leave_deductible = 0
     vacation_leave_deductible = 0
+    # Only deduct unpaid leave for monthly contractors
     unpaid_leave_deductible = unpaid_leave_days * prorata_day_rate if rate_type == RateType.MONTHLY else 0
     total_leave_deductibles = sick_leave_deductible + vacation_leave_deductible + unpaid_leave_deductible
 
     # Net salary calculation
     expenses_reimbursement = 0  # Default to 0 for auto-calculation
     if rate_type == RateType.MONTHLY:
-        prorata_pay = (gross_pay / total_calendar_days) * days_worked if total_calendar_days > 0 else 0
-        net_salary = prorata_pay - total_leave_deductibles + expenses_reimbursement
+        # For monthly rate: if leave balance is positive (has available leave), pay full salary
+        # Only deduct for unpaid leave days
+        net_salary = gross_pay - unpaid_leave_deductible + expenses_reimbursement
     else:
+        # For daily rate: pay based on days worked
         net_salary = gross_pay + expenses_reimbursement
 
     # Accruals (default to 0)
@@ -590,8 +598,9 @@ def calculate_payroll(
 
     # ========== NET SALARY CALCULATION ==========
     if rate_type == RateType.MONTHLY:
-        # Net salary for monthly = (Gross pay / Total calendar days × Days worked) - leave deductibles + expenses
-        net_salary = (gross_pay / total_calendar_days * days_worked) - leave_deductibles + expenses_reimbursement
+        # For monthly rate: if leave balance is positive (has available leave), pay full salary
+        # Only deduct for unpaid leave (leave_deductibles calculated above when balance is negative)
+        net_salary = gross_pay - leave_deductibles + expenses_reimbursement
     else:
         # Net salary for daily = Gross pay + Expenses
         net_salary = gross_pay + expenses_reimbursement
@@ -939,12 +948,88 @@ def get_payroll_detailed(
     }
 
 
+@router.put("/{payroll_id}/update")
+def update_payroll(
+    payroll_id: int,
+    expenses_reimbursement: Optional[float] = None,
+    accrual_gosi: Optional[float] = None,
+    accrual_salary_transfer: Optional[float] = None,
+    accrual_admin_costs: Optional[float] = None,
+    accrual_gratuity: Optional[float] = None,
+    accrual_airfare: Optional[float] = None,
+    accrual_annual_leave: Optional[float] = None,
+    accrual_other: Optional[float] = None,
+    management_fee: Optional[float] = None,
+    db: Session = Depends(get_db)
+):
+    """Update editable fields of a payroll record."""
+    payroll = db.query(Payroll).filter(Payroll.id == payroll_id).first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Payroll record not found")
+
+    if payroll.status != PayrollStatus.CALCULATED:
+        raise HTTPException(status_code=400, detail="Can only edit payroll in CALCULATED status")
+
+    # Update fields if provided
+    if expenses_reimbursement is not None:
+        payroll.expenses_reimbursement = expenses_reimbursement
+    if accrual_gosi is not None:
+        payroll.accrual_gosi = accrual_gosi
+    if accrual_salary_transfer is not None:
+        payroll.accrual_salary_transfer = accrual_salary_transfer
+    if accrual_admin_costs is not None:
+        payroll.accrual_admin_costs = accrual_admin_costs
+    if accrual_gratuity is not None:
+        payroll.accrual_gratuity = accrual_gratuity
+    if accrual_airfare is not None:
+        payroll.accrual_airfare = accrual_airfare
+    if accrual_annual_leave is not None:
+        payroll.accrual_annual_leave = accrual_annual_leave
+    if accrual_other is not None:
+        payroll.accrual_other = accrual_other
+    if management_fee is not None:
+        payroll.management_fee = management_fee
+
+    # Recalculate totals
+    payroll.total_accruals = (
+        (payroll.accrual_gosi or 0) +
+        (payroll.accrual_salary_transfer or 0) +
+        (payroll.accrual_admin_costs or 0) +
+        (payroll.accrual_gratuity or 0) +
+        (payroll.accrual_airfare or 0) +
+        (payroll.accrual_annual_leave or 0) +
+        (payroll.accrual_other or 0)
+    )
+
+    # Recalculate net salary if expenses changed
+    rate_type = payroll.rate_type
+    if rate_type == RateType.MONTHLY:
+        payroll.net_salary = payroll.gross_pay - (payroll.leave_deductibles or 0) + (payroll.expenses_reimbursement or 0)
+    else:
+        payroll.net_salary = payroll.gross_pay + (payroll.expenses_reimbursement or 0)
+
+    # Recalculate invoice
+    payroll.invoice_total = payroll.net_salary + payroll.total_accruals + (payroll.management_fee or 0)
+    payroll.vat_amount = payroll.invoice_total * payroll.vat_rate
+    payroll.total_payable = payroll.invoice_total + payroll.vat_amount
+
+    db.commit()
+    db.refresh(payroll)
+
+    return {"message": "Payroll updated successfully", "id": payroll.id}
+
+
 @router.put("/{payroll_id}/approve")
 def approve_payroll(
     payroll_id: int,
     db: Session = Depends(get_db)
 ):
-    """Approve a payroll record (mark as ready for payment)."""
+    """
+    Approve a payroll record. This will:
+    1. Email the invoice to the client
+    2. Generate the contractor payslip
+    3. Mark the payroll as approved
+    """
     payroll = db.query(Payroll).filter(Payroll.id == payroll_id).first()
     if not payroll:
         raise HTTPException(status_code=404, detail="Payroll record not found")
@@ -952,11 +1037,131 @@ def approve_payroll(
     if payroll.status != PayrollStatus.CALCULATED:
         raise HTTPException(status_code=400, detail="Payroll must be in CALCULATED status to approve")
 
+    contractor = db.query(Contractor).filter(Contractor.id == payroll.contractor_id).first()
+    if not contractor:
+        raise HTTPException(status_code=404, detail="Contractor not found")
+
+    contractor_name = f"{contractor.first_name} {contractor.surname}"
+
+    # Generate payslip PDF
+    from app.utils.payroll_pdf import generate_payslip_pdf, generate_invoice_pdf
+
+    payslip_buffer = generate_payslip_pdf(payroll=payroll, contractor=contractor)
+    payslip_bytes = payslip_buffer.getvalue()
+
+    # Generate invoice PDF
+    invoice_buffer = generate_invoice_pdf(payroll=payroll, contractor=contractor)
+    invoice_bytes = invoice_buffer.getvalue()
+
+    # Send invoice email to client
+    if contractor.client_email:
+        try:
+            from app.utils.email import send_email_with_attachments
+
+            client_subject = f"Invoice - {contractor_name} - {payroll.period}"
+            client_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #FF6B00;">Invoice for {contractor_name}</h2>
+                <p>Dear {contractor.client_name or 'Client'},</p>
+                <p>Please find attached the invoice for {contractor_name} for the period of {payroll.period}.</p>
+                <table style="margin: 20px 0; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Contractor:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{contractor_name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Period:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.period}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Invoice Total:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.invoice_total:,.2f}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>VAT ({int(payroll.vat_rate * 100)}%):</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.vat_amount:,.2f}</td>
+                    </tr>
+                    <tr style="background-color: #f9f9f9;">
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Total Payable:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{payroll.currency} {payroll.total_payable:,.2f}</strong></td>
+                    </tr>
+                </table>
+                <p>Please review the attached invoice and process payment at your earliest convenience.</p>
+                <p>Best regards,<br>Aventus Consultants</p>
+            </body>
+            </html>
+            """
+
+            send_email_with_attachments(
+                to_email=contractor.client_email,
+                subject=client_subject,
+                body=client_body,
+                attachments=[{
+                    "filename": f"Invoice_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
+                    "content": invoice_bytes,
+                    "content_type": "application/pdf"
+                }]
+            )
+            print(f"[INFO] Invoice email sent to client: {contractor.client_email}")
+        except Exception as e:
+            print(f"[WARNING] Failed to send invoice email to client: {e}")
+
+    # Send payslip email to contractor
+    if contractor.email:
+        try:
+            from app.utils.email import send_email_with_attachments
+
+            contractor_subject = f"Payslip - {payroll.period}"
+            contractor_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #FF6B00;">Your Payslip for {payroll.period}</h2>
+                <p>Dear {contractor.first_name},</p>
+                <p>Please find attached your payslip for the period of {payroll.period}.</p>
+                <table style="margin: 20px 0; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Period:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.period}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Days Worked:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.days_worked}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Gross Pay:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.gross_pay:,.2f}</td>
+                    </tr>
+                    <tr style="background-color: #f9f9f9;">
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Net Salary:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{payroll.currency} {payroll.net_salary:,.2f}</strong></td>
+                    </tr>
+                </table>
+                <p>If you have any questions about your payslip, please contact us.</p>
+                <p>Best regards,<br>Aventus Consultants</p>
+            </body>
+            </html>
+            """
+
+            send_email_with_attachments(
+                to_email=contractor.email,
+                subject=contractor_subject,
+                body=contractor_body,
+                attachments=[{
+                    "filename": f"Payslip_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
+                    "content": payslip_bytes,
+                    "content_type": "application/pdf"
+                }]
+            )
+            print(f"[INFO] Payslip email sent to contractor: {contractor.email}")
+        except Exception as e:
+            print(f"[WARNING] Failed to send payslip email to contractor: {e}")
+
     payroll.status = PayrollStatus.APPROVED
     payroll.approved_at = datetime.utcnow()
     db.commit()
 
-    return {"message": "Payroll approved successfully", "status": payroll.status.value}
+    return {"message": "Payroll approved. Invoice sent to client, payslip sent to contractor.", "status": payroll.status.value}
 
 
 @router.put("/{payroll_id}/mark-paid")
@@ -977,6 +1182,22 @@ def mark_payroll_paid(
     db.commit()
 
     return {"message": "Payroll marked as paid", "status": payroll.status.value}
+
+
+@router.delete("/{payroll_id}")
+def delete_payroll(
+    payroll_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a payroll record."""
+    payroll = db.query(Payroll).filter(Payroll.id == payroll_id).first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Payroll record not found")
+
+    db.delete(payroll)
+    db.commit()
+
+    return {"message": "Payroll deleted successfully"}
 
 
 @router.get("/{payroll_id}/payslip")
