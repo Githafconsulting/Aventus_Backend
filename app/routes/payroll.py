@@ -15,13 +15,264 @@ from app.models.contractor import Contractor
 router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
 
 
+# =============================================================================
+# HELPER FUNCTIONS - DRY Principle
+# =============================================================================
+
+def _get_float_value(primary_value, fallback_dict: Optional[dict], fallback_key: str, default: float = 0) -> Optional[float]:
+    """
+    Extract a float value from primary source or fallback dictionary.
+    Reduces repetitive try/except patterns throughout the codebase.
+    """
+    # Try primary value first
+    if primary_value is not None:
+        try:
+            return float(primary_value)
+        except (ValueError, TypeError):
+            pass
+
+    # Try fallback dictionary
+    if fallback_dict and fallback_dict.get(fallback_key):
+        try:
+            return float(fallback_dict[fallback_key])
+        except (ValueError, TypeError):
+            pass
+
+    return default if default is not None else None
+
+
+def _get_contractor_name(contractor: Optional[Contractor]) -> str:
+    """Get formatted contractor name or 'Unknown' if not available."""
+    if contractor:
+        return f"{contractor.first_name} {contractor.surname}"
+    return "Unknown"
+
+
+def _calculate_total_accruals(
+    gosi: float = 0,
+    salary_transfer: float = 0,
+    admin_costs: float = 0,
+    gratuity: float = 0,
+    airfare: float = 0,
+    annual_leave: float = 0,
+    other: float = 0
+) -> float:
+    """Calculate total accruals from individual components."""
+    return (
+        (gosi or 0) +
+        (salary_transfer or 0) +
+        (admin_costs or 0) +
+        (gratuity or 0) +
+        (airfare or 0) +
+        (annual_leave or 0) +
+        (other or 0)
+    )
+
+
+def _format_payroll_response(payroll: Payroll, contractor: Contractor) -> dict:
+    """
+    Format payroll record for API response.
+    Single source of truth for payroll response structure.
+    """
+    contractor_name = _get_contractor_name(contractor)
+
+    response = {
+        "id": payroll.id,
+        "timesheet_id": payroll.timesheet_id,
+        "contractor_id": payroll.contractor_id,
+        "contractor_name": contractor_name,
+        "contractor_email": contractor.email if contractor else None,
+
+        # Basic Info
+        "period": payroll.period,
+        "client_name": payroll.client_name,
+        "third_party_name": payroll.third_party_name,
+        "currency": payroll.currency,
+        "rate_type": payroll.rate_type.value if payroll.rate_type else "monthly",
+        "country": payroll.country,
+
+        # Basic Calculation
+        "monthly_rate": payroll.monthly_rate,
+        "total_calendar_days": payroll.total_calendar_days,
+        "days_worked": payroll.days_worked,
+        "prorata_day_rate": round(payroll.prorata_day_rate, 2) if payroll.prorata_day_rate else None,
+        "gross_pay": round(payroll.gross_pay, 2) if payroll.gross_pay else None,
+        "day_rate": payroll.day_rate,
+
+        # Leave
+        "leave_allowance": payroll.leave_allowance,
+        "carry_over_leave": payroll.carry_over_leave,
+        "total_leave_allowance": payroll.total_leave_allowance,
+        "total_leave_taken": payroll.total_leave_taken,
+        "leave_balance": payroll.leave_balance,
+        "previous_month_days_worked": payroll.previous_month_days_worked,
+        "leave_deductibles": round(payroll.leave_deductibles, 2) if payroll.leave_deductibles else 0,
+
+        # Expenses
+        "expenses_reimbursement": payroll.expenses_reimbursement,
+
+        # Net Salary
+        "net_salary": round(payroll.net_salary, 2) if payroll.net_salary else None,
+
+        # Accruals
+        "accrual_gosi": payroll.accrual_gosi,
+        "accrual_salary_transfer": payroll.accrual_salary_transfer,
+        "accrual_admin_costs": payroll.accrual_admin_costs,
+        "accrual_gratuity": payroll.accrual_gratuity,
+        "accrual_airfare": payroll.accrual_airfare,
+        "accrual_annual_leave": payroll.accrual_annual_leave,
+        "accrual_other": payroll.accrual_other,
+        "total_accruals": round(payroll.total_accruals, 2) if payroll.total_accruals else 0,
+
+        # Management Fee
+        "management_fee": payroll.management_fee,
+
+        # Invoice
+        "invoice_total": round(payroll.invoice_total, 2) if payroll.invoice_total else None,
+        "vat_rate": payroll.vat_rate,
+        "vat_amount": round(payroll.vat_amount, 2) if payroll.vat_amount else 0,
+        "total_payable": round(payroll.total_payable, 2) if payroll.total_payable else None,
+
+        # Status
+        "status": payroll.status.value,
+        "calculated_at": payroll.calculated_at,
+        "approved_at": payroll.approved_at,
+        "paid_at": payroll.paid_at,
+    }
+
+    return response
+
+
 def _get_calendar_days_in_month(period: str) -> int:
     """Get total calendar days in a month from period string like 'November 2024'."""
     try:
         date = datetime.strptime(period, "%B %Y")
         return monthrange(date.year, date.month)[1]
-    except:
+    except (ValueError, AttributeError):
         return 30  # Default fallback
+
+
+def _build_email_table_html(rows: list[tuple[str, str]], highlight_last: bool = True) -> str:
+    """
+    Build HTML table for email body.
+    Each row is a tuple of (label, value).
+    """
+    html_rows = []
+    for i, (label, value) in enumerate(rows):
+        is_last = i == len(rows) - 1
+        style = 'style="background-color: #f9f9f9;"' if highlight_last and is_last else ''
+        value_html = f"<strong>{value}</strong>" if highlight_last and is_last else value
+        html_rows.append(f"""
+                    <tr {style}>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{label}:</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">{value_html}</td>
+                    </tr>""")
+    return "".join(html_rows)
+
+
+def _send_invoice_to_client(
+    contractor: Contractor,
+    contractor_name: str,
+    payroll: Payroll,
+    invoice_bytes: bytes
+) -> bool:
+    """Send invoice email to client. Returns True if successful."""
+    if not contractor.client_email:
+        return False
+
+    try:
+        from app.utils.email import send_email_with_attachments
+
+        table_rows = [
+            ("Contractor", contractor_name),
+            ("Period", payroll.period),
+            ("Invoice Total", f"{payroll.currency} {payroll.invoice_total:,.2f}"),
+            (f"VAT ({int(payroll.vat_rate * 100)}%)", f"{payroll.currency} {payroll.vat_amount:,.2f}"),
+            ("Total Payable", f"{payroll.currency} {payroll.total_payable:,.2f}"),
+        ]
+
+        client_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #FF6B00;">Invoice for {contractor_name}</h2>
+                <p>Dear {contractor.client_name or 'Client'},</p>
+                <p>Please find attached the invoice for {contractor_name} for the period of {payroll.period}.</p>
+                <table style="margin: 20px 0; border-collapse: collapse;">
+                    {_build_email_table_html(table_rows)}
+                </table>
+                <p>Please review the attached invoice and process payment at your earliest convenience.</p>
+                <p>Best regards,<br>Aventus Consultants</p>
+            </body>
+            </html>
+            """
+
+        send_email_with_attachments(
+            to_email=contractor.client_email,
+            subject=f"Invoice - {contractor_name} - {payroll.period}",
+            body=client_body,
+            attachments=[{
+                "filename": f"Invoice_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
+                "content": invoice_bytes,
+                "content_type": "application/pdf"
+            }]
+        )
+        print(f"[INFO] Invoice email sent to client: {contractor.client_email}")
+        return True
+    except Exception as e:
+        print(f"[WARNING] Failed to send invoice email to client: {e}")
+        return False
+
+
+def _send_payslip_to_contractor(
+    contractor: Contractor,
+    contractor_name: str,
+    payroll: Payroll,
+    payslip_bytes: bytes
+) -> bool:
+    """Send payslip email to contractor. Returns True if successful."""
+    if not contractor.email:
+        return False
+
+    try:
+        from app.utils.email import send_email_with_attachments
+
+        table_rows = [
+            ("Period", payroll.period),
+            ("Days Worked", str(payroll.days_worked)),
+            ("Gross Pay", f"{payroll.currency} {payroll.gross_pay:,.2f}"),
+            ("Net Salary", f"{payroll.currency} {payroll.net_salary:,.2f}"),
+        ]
+
+        contractor_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #FF6B00;">Your Payslip for {payroll.period}</h2>
+                <p>Dear {contractor.first_name},</p>
+                <p>Please find attached your payslip for the period of {payroll.period}.</p>
+                <table style="margin: 20px 0; border-collapse: collapse;">
+                    {_build_email_table_html(table_rows)}
+                </table>
+                <p>If you have any questions about your payslip, please contact us.</p>
+                <p>Best regards,<br>Aventus Consultants</p>
+            </body>
+            </html>
+            """
+
+        send_email_with_attachments(
+            to_email=contractor.email,
+            subject=f"Payslip - {payroll.period}",
+            body=contractor_body,
+            attachments=[{
+                "filename": f"Payslip_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
+                "content": payslip_bytes,
+                "content_type": "application/pdf"
+            }]
+        )
+        print(f"[INFO] Payslip email sent to contractor: {contractor.email}")
+        return True
+    except Exception as e:
+        print(f"[WARNING] Failed to send payslip email to contractor: {e}")
+        return False
 
 
 def _get_vat_rate(country: str) -> float:
@@ -35,144 +286,41 @@ def _get_vat_rate(country: str) -> float:
 
 
 def _get_contractor_full_info(contractor: Contractor, db: Session) -> dict:
-    """Extract all pay-related information from contractor."""
-    # Basic rate info - check CDS form data first, then contractor column
-    rate_type = "monthly"  # Default
-    if contractor.cds_form_data and contractor.cds_form_data.get("rateType"):
-        rate_type = contractor.cds_form_data["rateType"].lower()
-    elif contractor.rate_type:
-        rate_type = contractor.rate_type.lower()
+    """Extract all pay-related information from contractor using DRY helper functions."""
+    cds = contractor.cds_form_data or {}
+    costing = contractor.costing_sheet_data or {}
 
-    # Normalize rate type: "day" -> "daily" for consistency
+    # Rate type - normalize "day" -> "daily"
+    rate_type = (cds.get("rateType") or contractor.rate_type or "monthly").lower()
     if rate_type == "day":
         rate_type = "daily"
 
-    # Currency - check CDS form data first
-    currency = "AED"  # Default
-    if contractor.cds_form_data and contractor.cds_form_data.get("currency"):
-        currency = contractor.cds_form_data["currency"]
-    elif contractor.currency:
-        currency = contractor.currency
+    # Currency
+    currency = cds.get("currency") or contractor.currency or "AED"
 
-    # Get monthly rate from CDS
-    monthly_rate = 0
-    if contractor.gross_salary:
-        try:
-            monthly_rate = float(contractor.gross_salary)
-        except (ValueError, TypeError):
-            pass
-    if monthly_rate == 0 and contractor.cds_form_data:
-        cds = contractor.cds_form_data
-        if cds.get("grossSalary"):
-            try:
-                monthly_rate = float(cds["grossSalary"])
-            except (ValueError, TypeError):
-                pass
+    # Rates - using DRY helper
+    monthly_rate = _get_float_value(contractor.gross_salary, cds, "grossSalary", 0)
+    day_rate = _get_float_value(contractor.day_rate, cds, "dayRate", None)
+    charge_rate_month = _get_float_value(contractor.charge_rate_month, cds, "chargeRateMonth", 0)
+    charge_rate_day = _get_float_value(contractor.charge_rate_day, cds, "chargeRateDay", None)
 
-    # Get day rate
-    day_rate = None
-    if contractor.day_rate:
-        try:
-            day_rate = float(contractor.day_rate)
-        except (ValueError, TypeError):
-            pass
-    if day_rate is None and contractor.cds_form_data:
-        cds = contractor.cds_form_data
-        if cds.get("dayRate"):
-            try:
-                day_rate = float(cds["dayRate"])
-            except (ValueError, TypeError):
-                pass
+    # Leave allowance - check multiple sources
+    leave_allowance = _get_float_value(contractor.leave_allowance, cds, "leaveAllowance", None)
+    if leave_allowance is None:
+        leave_allowance = _get_float_value(contractor.vacation_days, None, "", 30)
 
-    # Get charge rates for invoicing
-    charge_rate_month = 0
-    if contractor.charge_rate_month:
-        try:
-            charge_rate_month = float(contractor.charge_rate_month)
-        except (ValueError, TypeError):
-            pass
-    if charge_rate_month == 0 and contractor.cds_form_data:
-        cds = contractor.cds_form_data
-        if cds.get("chargeRateMonth"):
-            try:
-                charge_rate_month = float(cds["chargeRateMonth"])
-            except (ValueError, TypeError):
-                pass
-
-    charge_rate_day = None
-    if contractor.charge_rate_day:
-        try:
-            charge_rate_day = float(contractor.charge_rate_day)
-        except (ValueError, TypeError):
-            pass
-    if charge_rate_day is None and contractor.cds_form_data:
-        cds = contractor.cds_form_data
-        if cds.get("chargeRateDay"):
-            try:
-                charge_rate_day = float(cds["chargeRateDay"])
-            except (ValueError, TypeError):
-                pass
-
-    # Leave allowance from CDS (annual leave days)
-    leave_allowance = 30  # Default
-    # First check the new leave_allowance field
-    if contractor.leave_allowance:
-        try:
-            leave_allowance = float(contractor.leave_allowance)
-        except (ValueError, TypeError):
-            pass
-    # Check CDS form data for leaveAllowance
-    if contractor.cds_form_data and contractor.cds_form_data.get("leaveAllowance"):
-        try:
-            leave_allowance = float(contractor.cds_form_data["leaveAllowance"])
-        except (ValueError, TypeError):
-            pass
-    # Fallback to old vacation_days field
-    elif contractor.vacation_days:
-        try:
-            leave_allowance = float(contractor.vacation_days)
-        except (ValueError, TypeError):
-            pass
-
-    # Third party / Management company info
-    third_party_name = contractor.company_name or ""
-
-    # Management fee from costing sheet
+    # Management fee - check multiple keys in costing sheet
     management_fee = 0
-    if contractor.costing_sheet_data:
-        costing = contractor.costing_sheet_data
-        for key in ["management_company_charges", "managementFee", "management_fee", "serviceCharge"]:
-            if costing.get(key):
-                try:
-                    management_fee = float(costing[key])
-                    break
-                except (ValueError, TypeError):
-                    pass
+    for key in ["management_company_charges", "managementFee", "management_fee", "serviceCharge"]:
+        fee = _get_float_value(None, costing, key, None)
+        if fee is not None and fee > 0:
+            management_fee = fee
+            break
 
-    # Accruals from costing sheet
-    accrual_gratuity = 0
-    accrual_airfare = 0
-    accrual_annual_leave = 0
-    if contractor.costing_sheet_data:
-        costing = contractor.costing_sheet_data
-        if costing.get("eosb") or costing.get("gratuity"):
-            try:
-                accrual_gratuity = float(costing.get("eosb") or costing.get("gratuity") or 0)
-            except (ValueError, TypeError):
-                pass
-        if costing.get("airfare"):
-            try:
-                accrual_airfare = float(costing["airfare"])
-            except (ValueError, TypeError):
-                pass
-        if costing.get("leave") or costing.get("annualLeave"):
-            try:
-                accrual_annual_leave = float(costing.get("leave") or costing.get("annualLeave") or 0)
-            except (ValueError, TypeError):
-                pass
-
-    # Country for VAT
-    country = contractor.onboarding_route or "UAE"
+    # Accruals from costing sheet - using DRY helper
+    accrual_gratuity = _get_float_value(None, costing, "eosb", None) or _get_float_value(None, costing, "gratuity", 0)
+    accrual_airfare = _get_float_value(None, costing, "airfare", 0)
+    accrual_annual_leave = _get_float_value(None, costing, "leave", None) or _get_float_value(None, costing, "annualLeave", 0)
 
     return {
         "rate_type": rate_type,
@@ -182,12 +330,12 @@ def _get_contractor_full_info(contractor: Contractor, db: Session) -> dict:
         "charge_rate_month": charge_rate_month,
         "charge_rate_day": charge_rate_day,
         "leave_allowance": leave_allowance,
-        "third_party_name": third_party_name,
+        "third_party_name": contractor.company_name or "",
         "management_fee": management_fee,
         "accrual_gratuity": accrual_gratuity,
         "accrual_airfare": accrual_airfare,
         "accrual_annual_leave": accrual_annual_leave,
-        "country": country,
+        "country": contractor.onboarding_route or "UAE",
         "client_name": contractor.client_name or "",
     }
 
@@ -206,7 +354,7 @@ def _get_total_leave_taken_this_year(contractor_id: str, year: int, db: Session)
             ts_date = datetime.strptime(ts.month, "%B %Y")
             if ts_date.year == year:
                 total_leave += ts.vacation_days or 0
-        except:
+        except (ValueError, AttributeError):
             pass
 
     return total_leave
@@ -230,7 +378,7 @@ def _get_previous_month_timesheet(contractor_id: str, current_period: str, db: S
             Timesheet.month == prev_period,
             Timesheet.status == TimesheetStatus.APPROVED
         ).first()
-    except:
+    except (ValueError, AttributeError):
         return None
 
 
@@ -275,7 +423,7 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
     try:
         period_date = datetime.strptime(period, "%B %Y")
         current_year = period_date.year
-    except:
+    except (ValueError, AttributeError):
         current_year = datetime.now().year
 
     # Basic calculation
@@ -400,7 +548,7 @@ def get_timesheets_ready_for_payroll(
             continue
 
         info = _get_contractor_full_info(contractor, db)
-        contractor_name = f"{contractor.first_name} {contractor.surname}"
+        contractor_name = _get_contractor_name(contractor)
 
         # Calculate estimated gross based on rate type
         estimated_gross = None
@@ -456,7 +604,7 @@ def get_all_payroll_records(
         client_name = None
 
         if contractor:
-            contractor_name = f"{contractor.first_name} {contractor.surname}"
+            contractor_name = _get_contractor_name(contractor)
             contractor_email = contractor.email
             client_name = contractor.client_name
 
@@ -566,7 +714,7 @@ def calculate_payroll(
     try:
         period_date = datetime.strptime(period, "%B %Y")
         current_year = period_date.year
-    except:
+    except (ValueError, AttributeError):
         current_year = datetime.now().year
 
     # ========== BASIC CALCULATION ==========
@@ -611,14 +759,14 @@ def calculate_payroll(
     accrual_airfare = info["accrual_airfare"]
     accrual_annual_leave = info["accrual_annual_leave"]
 
-    total_accruals = (
-        accrual_gosi +
-        accrual_salary_transfer +
-        accrual_admin_costs +
-        accrual_gratuity +
-        accrual_airfare +
-        accrual_annual_leave +
-        accrual_other
+    total_accruals = _calculate_total_accruals(
+        gosi=accrual_gosi,
+        salary_transfer=accrual_salary_transfer,
+        admin_costs=accrual_admin_costs,
+        gratuity=accrual_gratuity,
+        airfare=accrual_airfare,
+        annual_leave=accrual_annual_leave,
+        other=accrual_other
     )
 
     # ========== MANAGEMENT FEE ==========
@@ -702,66 +850,8 @@ def calculate_payroll(
     db.commit()
     db.refresh(payroll)
 
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
-
-    return {
-        "id": payroll.id,
-        "timesheet_id": payroll.timesheet_id,
-        "contractor_id": payroll.contractor_id,
-        "contractor_name": contractor_name,
-
-        # Basic Info
-        "period": payroll.period,
-        "client_name": payroll.client_name,
-        "third_party_name": payroll.third_party_name,
-        "currency": payroll.currency,
-        "rate_type": payroll.rate_type.value,
-        "country": payroll.country,
-
-        # Basic Calculation
-        "monthly_rate": payroll.monthly_rate,
-        "total_calendar_days": payroll.total_calendar_days,
-        "days_worked": payroll.days_worked,
-        "prorata_day_rate": round(payroll.prorata_day_rate, 2) if payroll.prorata_day_rate else None,
-        "gross_pay": round(payroll.gross_pay, 2) if payroll.gross_pay else None,
-        "day_rate": payroll.day_rate,
-
-        # Leave
-        "leave_allowance": payroll.leave_allowance,
-        "carry_over_leave": payroll.carry_over_leave,
-        "total_leave_allowance": payroll.total_leave_allowance,
-        "total_leave_taken": payroll.total_leave_taken,
-        "leave_balance": payroll.leave_balance,
-        "leave_deductibles": round(payroll.leave_deductibles, 2),
-
-        # Expenses
-        "expenses_reimbursement": payroll.expenses_reimbursement,
-
-        # Net Salary
-        "net_salary": round(payroll.net_salary, 2) if payroll.net_salary else None,
-
-        # Accruals
-        "accrual_gosi": payroll.accrual_gosi,
-        "accrual_salary_transfer": payroll.accrual_salary_transfer,
-        "accrual_admin_costs": payroll.accrual_admin_costs,
-        "accrual_gratuity": payroll.accrual_gratuity,
-        "accrual_airfare": payroll.accrual_airfare,
-        "accrual_annual_leave": payroll.accrual_annual_leave,
-        "accrual_other": payroll.accrual_other,
-        "total_accruals": round(payroll.total_accruals, 2),
-
-        # Management Fee
-        "management_fee": payroll.management_fee,
-
-        # Invoice
-        "invoice_total": round(payroll.invoice_total, 2) if payroll.invoice_total else None,
-        "vat_rate": payroll.vat_rate,
-        "vat_amount": round(payroll.vat_amount, 2),
-        "total_payable": round(payroll.total_payable, 2) if payroll.total_payable else None,
-
-        "status": payroll.status.value,
-        "calculated_at": payroll.calculated_at,
-    }
+    # Use DRY helper for consistent response formatting
+    return _format_payroll_response(payroll, contractor)
 
 
 @router.get("/{payroll_id}")
@@ -775,76 +865,9 @@ def get_payroll(
         raise HTTPException(status_code=404, detail="Payroll record not found")
 
     contractor = db.query(Contractor).filter(Contractor.id == payroll.contractor_id).first()
-    contractor_name = "Unknown"
-    contractor_email = None
 
-    if contractor:
-        contractor_name = f"{contractor.first_name} {contractor.surname}"
-        contractor_email = contractor.email
-
-    return {
-        "id": payroll.id,
-        "timesheet_id": payroll.timesheet_id,
-        "contractor_id": payroll.contractor_id,
-        "contractor_name": contractor_name,
-        "contractor_email": contractor_email,
-
-        # Basic Info
-        "period": payroll.period,
-        "client_name": payroll.client_name,
-        "third_party_name": payroll.third_party_name,
-        "currency": payroll.currency,
-        "rate_type": payroll.rate_type.value if payroll.rate_type else "monthly",
-        "country": payroll.country,
-
-        # Basic Calculation
-        "monthly_rate": payroll.monthly_rate,
-        "total_calendar_days": payroll.total_calendar_days,
-        "days_worked": payroll.days_worked,
-        "prorata_day_rate": payroll.prorata_day_rate,
-        "gross_pay": payroll.gross_pay,
-        "day_rate": payroll.day_rate,
-
-        # Leave
-        "leave_allowance": payroll.leave_allowance,
-        "carry_over_leave": payroll.carry_over_leave,
-        "total_leave_allowance": payroll.total_leave_allowance,
-        "total_leave_taken": payroll.total_leave_taken,
-        "leave_balance": payroll.leave_balance,
-        "previous_month_days_worked": payroll.previous_month_days_worked,
-        "leave_deductibles": payroll.leave_deductibles,
-
-        # Expenses
-        "expenses_reimbursement": payroll.expenses_reimbursement,
-
-        # Net Salary
-        "net_salary": payroll.net_salary,
-
-        # Accruals
-        "accrual_gosi": payroll.accrual_gosi,
-        "accrual_salary_transfer": payroll.accrual_salary_transfer,
-        "accrual_admin_costs": payroll.accrual_admin_costs,
-        "accrual_gratuity": payroll.accrual_gratuity,
-        "accrual_airfare": payroll.accrual_airfare,
-        "accrual_annual_leave": payroll.accrual_annual_leave,
-        "accrual_other": payroll.accrual_other,
-        "total_accruals": payroll.total_accruals,
-
-        # Management Fee
-        "management_fee": payroll.management_fee,
-
-        # Invoice
-        "invoice_total": payroll.invoice_total,
-        "vat_rate": payroll.vat_rate,
-        "vat_amount": payroll.vat_amount,
-        "total_payable": payroll.total_payable,
-
-        # Status
-        "status": payroll.status.value,
-        "calculated_at": payroll.calculated_at,
-        "approved_at": payroll.approved_at,
-        "paid_at": payroll.paid_at,
-    }
+    # Use DRY helper for consistent response formatting
+    return _format_payroll_response(payroll, contractor)
 
 
 @router.get("/{payroll_id}/detailed")
@@ -861,7 +884,7 @@ def get_payroll_detailed(
     if not contractor:
         raise HTTPException(status_code=404, detail="Contractor not found")
 
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    contractor_name = _get_contractor_name(contractor)
 
     return {
         # Header Info
@@ -990,15 +1013,15 @@ def update_payroll(
     if management_fee is not None:
         payroll.management_fee = management_fee
 
-    # Recalculate totals
-    payroll.total_accruals = (
-        (payroll.accrual_gosi or 0) +
-        (payroll.accrual_salary_transfer or 0) +
-        (payroll.accrual_admin_costs or 0) +
-        (payroll.accrual_gratuity or 0) +
-        (payroll.accrual_airfare or 0) +
-        (payroll.accrual_annual_leave or 0) +
-        (payroll.accrual_other or 0)
+    # Recalculate totals using DRY helper
+    payroll.total_accruals = _calculate_total_accruals(
+        gosi=payroll.accrual_gosi,
+        salary_transfer=payroll.accrual_salary_transfer,
+        admin_costs=payroll.accrual_admin_costs,
+        gratuity=payroll.accrual_gratuity,
+        airfare=payroll.accrual_airfare,
+        annual_leave=payroll.accrual_annual_leave,
+        other=payroll.accrual_other
     )
 
     # Recalculate net salary if expenses changed
@@ -1041,121 +1064,20 @@ def approve_payroll(
     if not contractor:
         raise HTTPException(status_code=404, detail="Contractor not found")
 
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    contractor_name = _get_contractor_name(contractor)
 
-    # Generate payslip PDF
+    # Generate PDFs
     from app.utils.payroll_pdf import generate_payslip_pdf, generate_invoice_pdf
 
     payslip_buffer = generate_payslip_pdf(payroll=payroll, contractor=contractor)
     payslip_bytes = payslip_buffer.getvalue()
 
-    # Generate invoice PDF
     invoice_buffer = generate_invoice_pdf(payroll=payroll, contractor=contractor)
     invoice_bytes = invoice_buffer.getvalue()
 
-    # Send invoice email to client
-    if contractor.client_email:
-        try:
-            from app.utils.email import send_email_with_attachments
-
-            client_subject = f"Invoice - {contractor_name} - {payroll.period}"
-            client_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px;">
-                <h2 style="color: #FF6B00;">Invoice for {contractor_name}</h2>
-                <p>Dear {contractor.client_name or 'Client'},</p>
-                <p>Please find attached the invoice for {contractor_name} for the period of {payroll.period}.</p>
-                <table style="margin: 20px 0; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Contractor:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{contractor_name}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Period:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.period}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Invoice Total:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.invoice_total:,.2f}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>VAT ({int(payroll.vat_rate * 100)}%):</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.vat_amount:,.2f}</td>
-                    </tr>
-                    <tr style="background-color: #f9f9f9;">
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Total Payable:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{payroll.currency} {payroll.total_payable:,.2f}</strong></td>
-                    </tr>
-                </table>
-                <p>Please review the attached invoice and process payment at your earliest convenience.</p>
-                <p>Best regards,<br>Aventus Consultants</p>
-            </body>
-            </html>
-            """
-
-            send_email_with_attachments(
-                to_email=contractor.client_email,
-                subject=client_subject,
-                body=client_body,
-                attachments=[{
-                    "filename": f"Invoice_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
-                    "content": invoice_bytes,
-                    "content_type": "application/pdf"
-                }]
-            )
-            print(f"[INFO] Invoice email sent to client: {contractor.client_email}")
-        except Exception as e:
-            print(f"[WARNING] Failed to send invoice email to client: {e}")
-
-    # Send payslip email to contractor
-    if contractor.email:
-        try:
-            from app.utils.email import send_email_with_attachments
-
-            contractor_subject = f"Payslip - {payroll.period}"
-            contractor_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px;">
-                <h2 style="color: #FF6B00;">Your Payslip for {payroll.period}</h2>
-                <p>Dear {contractor.first_name},</p>
-                <p>Please find attached your payslip for the period of {payroll.period}.</p>
-                <table style="margin: 20px 0; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Period:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.period}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Days Worked:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.days_worked}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Gross Pay:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{payroll.currency} {payroll.gross_pay:,.2f}</td>
-                    </tr>
-                    <tr style="background-color: #f9f9f9;">
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>Net Salary:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{payroll.currency} {payroll.net_salary:,.2f}</strong></td>
-                    </tr>
-                </table>
-                <p>If you have any questions about your payslip, please contact us.</p>
-                <p>Best regards,<br>Aventus Consultants</p>
-            </body>
-            </html>
-            """
-
-            send_email_with_attachments(
-                to_email=contractor.email,
-                subject=contractor_subject,
-                body=contractor_body,
-                attachments=[{
-                    "filename": f"Payslip_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
-                    "content": payslip_bytes,
-                    "content_type": "application/pdf"
-                }]
-            )
-            print(f"[INFO] Payslip email sent to contractor: {contractor.email}")
-        except Exception as e:
-            print(f"[WARNING] Failed to send payslip email to contractor: {e}")
+    # Send emails
+    _send_invoice_to_client(contractor, contractor_name, payroll, invoice_bytes)
+    _send_payslip_to_contractor(contractor, contractor_name, payroll, payslip_bytes)
 
     payroll.status = PayrollStatus.APPROVED
     payroll.approved_at = datetime.utcnow()
@@ -1216,7 +1138,7 @@ def download_payslip(
 
     from app.utils.payroll_pdf import generate_payslip_pdf
 
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    contractor_name = _get_contractor_name(contractor)
 
     pdf_buffer = generate_payslip_pdf(
         payroll=payroll,
@@ -1248,7 +1170,7 @@ def download_invoice(
 
     from app.utils.payroll_pdf import generate_invoice_pdf
 
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
+    contractor_name = _get_contractor_name(contractor)
 
     pdf_buffer = generate_invoice_pdf(
         payroll=payroll,

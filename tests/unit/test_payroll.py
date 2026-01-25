@@ -30,7 +30,7 @@ class TestPayrollModel:
 
         required_fields = [
             "id", "timesheet_id", "contractor_id",
-            "day_rate", "work_days", "gross_amount",
+            "day_rate", "days_worked", "gross_pay",
             "deductions", "net_amount", "currency",
             "status", "period"
         ]
@@ -227,3 +227,155 @@ class TestPayrollStatusTransitions:
         }
 
         assert target not in valid_transitions.get(current, [])
+
+
+class TestPayrollHelperFunctions:
+    """Tests for payroll route helper functions."""
+
+    def test_get_contractor_name_with_valid_contractor(self):
+        """Test contractor name formatting with valid contractor."""
+        from app.routes.payroll import _get_contractor_name
+
+        contractor = MagicMock()
+        contractor.first_name = "John"
+        contractor.surname = "Doe"
+
+        result = _get_contractor_name(contractor)
+        assert result == "John Doe"
+
+    def test_get_contractor_name_with_none(self):
+        """Test contractor name returns Unknown when contractor is None."""
+        from app.routes.payroll import _get_contractor_name
+
+        result = _get_contractor_name(None)
+        assert result == "Unknown"
+
+    def test_get_calendar_days_in_month_january(self):
+        """Test calendar days for January."""
+        from app.routes.payroll import _get_calendar_days_in_month
+
+        result = _get_calendar_days_in_month("January 2024")
+        assert result == 31
+
+    def test_get_calendar_days_in_month_february_leap_year(self):
+        """Test calendar days for February in leap year."""
+        from app.routes.payroll import _get_calendar_days_in_month
+
+        result = _get_calendar_days_in_month("February 2024")
+        assert result == 29
+
+    def test_get_calendar_days_in_month_february_non_leap_year(self):
+        """Test calendar days for February in non-leap year."""
+        from app.routes.payroll import _get_calendar_days_in_month
+
+        result = _get_calendar_days_in_month("February 2023")
+        assert result == 28
+
+    def test_get_calendar_days_in_month_invalid_format(self):
+        """Test calendar days returns 30 for invalid format."""
+        from app.routes.payroll import _get_calendar_days_in_month
+
+        result = _get_calendar_days_in_month("invalid")
+        assert result == 30
+
+    def test_get_vat_rate_saudi(self):
+        """Test VAT rate for Saudi Arabia."""
+        from app.routes.payroll import _get_vat_rate
+
+        assert _get_vat_rate("Saudi Arabia") == 0.15
+        assert _get_vat_rate("KSA") == 0.15
+
+    def test_get_vat_rate_uae(self):
+        """Test VAT rate for UAE."""
+        from app.routes.payroll import _get_vat_rate
+
+        assert _get_vat_rate("UAE") == 0.05
+        assert _get_vat_rate("Dubai") == 0.05
+        assert _get_vat_rate("United Arab Emirates") == 0.05
+
+    def test_get_vat_rate_default(self):
+        """Test VAT rate defaults to UAE rate."""
+        from app.routes.payroll import _get_vat_rate
+
+        assert _get_vat_rate("Unknown Country") == 0.05
+        assert _get_vat_rate("") == 0.05
+        assert _get_vat_rate(None) == 0.05
+
+    def test_calculate_total_accruals(self):
+        """Test total accruals calculation."""
+        from app.routes.payroll import _calculate_total_accruals
+
+        result = _calculate_total_accruals(
+            gosi=100,
+            salary_transfer=50,
+            admin_costs=25,
+            gratuity=200,
+            airfare=150,
+            annual_leave=100,
+            other=75
+        )
+        assert result == 700
+
+    def test_calculate_total_accruals_with_none_values(self):
+        """Test total accruals handles None values."""
+        from app.routes.payroll import _calculate_total_accruals
+
+        result = _calculate_total_accruals(
+            gosi=None,
+            salary_transfer=100,
+            admin_costs=None
+        )
+        assert result == 100
+
+    def test_build_email_table_html(self):
+        """Test email table HTML generation."""
+        from app.routes.payroll import _build_email_table_html
+
+        rows = [
+            ("Name", "John Doe"),
+            ("Amount", "$1,000"),
+        ]
+        result = _build_email_table_html(rows)
+
+        assert "Name" in result
+        assert "John Doe" in result
+        assert "Amount" in result
+        assert "$1,000" in result
+        assert "<tr" in result
+        assert "<td" in result
+
+    def test_build_email_table_html_highlights_last_row(self):
+        """Test email table highlights last row by default."""
+        from app.routes.payroll import _build_email_table_html
+
+        rows = [
+            ("Item 1", "Value 1"),
+            ("Total", "100"),
+        ]
+        result = _build_email_table_html(rows, highlight_last=True)
+
+        # Last row should have background color and bold value
+        assert "background-color: #f9f9f9" in result
+        assert "<strong>100</strong>" in result
+
+    def test_get_float_value_primary(self):
+        """Test float extraction from primary value."""
+        from app.routes.payroll import _get_float_value
+
+        result = _get_float_value("100.50", None, "", 0)
+        assert result == 100.50
+
+    def test_get_float_value_fallback(self):
+        """Test float extraction from fallback dict."""
+        from app.routes.payroll import _get_float_value
+
+        fallback = {"key": "200.75"}
+        result = _get_float_value(None, fallback, "key", 0)
+        assert result == 200.75
+
+    def test_get_float_value_default(self):
+        """Test float extraction returns default when both fail."""
+        from app.routes.payroll import _get_float_value
+
+        result = _get_float_value(None, None, "", 50)
+        assert result == 50
