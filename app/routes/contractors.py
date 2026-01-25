@@ -1561,13 +1561,43 @@ async def approve_contractor_work_order(
     ).order_by(WorkOrder.created_at.desc()).first()
 
     if existing_work_order and existing_work_order.status == WorkOrderStatus.PENDING_CLIENT_SIGNATURE:
-        # Work order already sent, return success
-        return {
-            "message": "Work order already sent to client",
-            "work_order_id": existing_work_order.id,
-            "work_order_number": existing_work_order.work_order_number,
-            "status": "pending_client_signature"
-        }
+        # Check if email was actually sent (sent_date is not None)
+        if existing_work_order.sent_date:
+            # Work order already sent, return success
+            return {
+                "message": "Work order already sent to client",
+                "work_order_id": existing_work_order.id,
+                "work_order_number": existing_work_order.work_order_number,
+                "status": "pending_client_signature"
+            }
+        else:
+            # Work order exists but email wasn't sent - resend it
+            client_email = client.contact_person_email if client.contact_person_email else None
+            token_expiry = datetime.now(timezone.utc) + timedelta(hours=72)
+
+            if client_email:
+                try:
+                    print(f"[DEBUG] Resending work order email to: {client_email}")
+                    email_sent = send_work_order_to_client(
+                        client_email=client_email,
+                        client_name=client.company_name,
+                        contractor_name=f"{contractor.first_name} {contractor.surname}",
+                        work_order_token=existing_work_order.client_signature_token,
+                        expiry_date=token_expiry
+                    )
+                    if email_sent:
+                        existing_work_order.sent_date = datetime.now(timezone.utc)
+                        existing_work_order.sent_by = current_user.id
+                        db.commit()
+                except Exception as e:
+                    print(f"[ERROR] Exception resending work order email: {str(e)}")
+
+            return {
+                "message": "Work order resent to client",
+                "work_order_id": existing_work_order.id,
+                "work_order_number": existing_work_order.work_order_number,
+                "status": "pending_client_signature"
+            }
 
     # Generate work order number
     work_order_count = db.query(WorkOrder).count()
@@ -1635,7 +1665,12 @@ async def approve_contractor_work_order(
                 expiry_date=token_expiry
             )
 
-            # Email sent silently
+            # Update sent_date and sent_by if email was sent successfully
+            if email_sent:
+                work_order.sent_date = datetime.now(timezone.utc)
+                work_order.sent_by = current_user.id
+                db.commit()
+                db.refresh(work_order)
         except Exception as e:
             print(f"[ERROR] Exception sending work order email: {str(e)}")
     else:
@@ -1756,7 +1791,12 @@ async def send_work_order_to_client_endpoint(
                 expiry_date=token_expiry
             )
 
-            # Email sent silently
+            # Update sent_date and sent_by if email was sent successfully
+            if email_sent:
+                work_order.sent_date = datetime.now(timezone.utc)
+                work_order.sent_by = current_user.id
+                db.commit()
+                db.refresh(work_order)
         except Exception as e:
             print(f"[ERROR] Exception sending work order email: {str(e)}")
     else:
