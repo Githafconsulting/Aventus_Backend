@@ -197,62 +197,60 @@ async def list_contractors_summary(
     def get_display_status(contractor_status, work_order_status):
         """
         Compute display status based on both work order and contract status.
-        Work Order statuses: pending_client_signature, client_signed, pending_aventus_signature, completed
-        Contract statuses: pending_signature, signed, etc.
+        Keep status text short and concise.
         """
         status_val = contractor_status.value if hasattr(contractor_status, 'value') else contractor_status
 
         # If both WO and Contract are in play
         if work_order_status and status_val == 'pending_signature':
-            # Contract sent, check WO status
             if work_order_status == 'completed':
-                return "Work Order Signed, Awaiting Contractor Signature"
+                return "WO Signed, Contract Pending"
             elif work_order_status in ['client_signed', 'pending_aventus_signature']:
-                return "Work Order Pending Counter-Sign, Awaiting Contractor Signature"
+                return "WO & Contract Pending"
             elif work_order_status in ['sent', 'pending_client_signature']:
-                return "Awaiting Work Order & Contract Signatures"
+                return "WO & Contract Pending"
             else:
-                return "Awaiting Contractor Signature"
+                return "Contract Pending"
 
         # Work order completed but contract not sent yet
         if work_order_status == 'completed' and status_val == 'work_order_completed':
-            return "Work Order Signed"
+            return "WO Signed"
 
         # Work order client signed, awaiting counter-sign
         if work_order_status in ['client_signed', 'pending_aventus_signature']:
             if status_val == 'pending_client_wo_signature':
-                return "Work Order Pending Counter-Sign"
+                return "WO Pending Counter-Sign"
             elif status_val == 'pending_signature':
-                return "Work Order Pending Counter-Sign, Awaiting Contractor Signature"
+                return "WO & Contract Pending"
 
         # Work order sent to client, awaiting signature
         if work_order_status in ['sent', 'pending_client_signature'] and status_val == 'pending_client_wo_signature':
-            return "Awaiting Client Work Order Signature"
+            return "WO Pending Client"
 
         # Default status display
         status_display_map = {
             'draft': 'Draft',
-            'pending_documents': 'Pending Documents',
-            'documents_uploaded': 'Documents Uploaded',
+            'pending_documents': 'Pending Docs',
+            'documents_uploaded': 'Docs Uploaded',
             'pending_cohf': 'Pending COHF',
-            'awaiting_cohf_signature': 'Awaiting COHF Signature',
-            'cohf_completed': 'COHF Completed',
-            'pending_third_party_quote': 'Pending Third Party Quote',
-            'pending_third_party_response': 'Pending Third Party Response',
+            'awaiting_cohf_signature': 'COHF Pending',
+            'cohf_completed': 'COHF Done',
+            'pending_third_party_quote': 'Pending Quote',
+            'pending_third_party_response': 'Pending Response',
             'pending_cds_cs': 'Pending CDS/CS',
-            'cds_cs_completed': 'CDS/CS Completed',
+            'cds_cs_completed': 'CDS/CS Done',
             'pending_review': 'Pending Review',
             'approved': 'Approved',
             'rejected': 'Rejected',
             'cancelled': 'Cancelled',
-            'pending_client_wo_signature': 'Awaiting Client Work Order Signature',
-            'work_order_completed': 'Work Order Signed',
-            'pending_contract_upload': 'Pending Contract Upload',
-            'pending_3rd_party_contract': 'Pending 3rd Party Contract',
+            'pending_client_wo_signature': 'WO Pending Client',
+            'work_order_completed': 'WO Signed',
+            'pending_contract_upload': 'Contract Upload',
+            'pending_3rd_party_contract': '3rd Party Contract',
             'contract_uploaded': 'Contract Uploaded',
             'contract_approved': 'Contract Approved',
-            'pending_signature': 'Awaiting Contractor Signature',
-            'pending_superadmin_signature': 'Awaiting Superadmin Signature',
+            'pending_signature': 'Contract Pending',
+            'pending_superadmin_signature': 'Admin Sign Pending',
             'signed': 'Signed',
             'active': 'Active',
             'suspended': 'Suspended'
