@@ -173,7 +173,8 @@ async def list_contractors_summary(
         Contractor.cohf_aventus_signed_date,
         Contractor.quote_sheet_status,
         Contractor.client_name,
-        Contractor.third_party_id
+        Contractor.third_party_id,
+        Contractor.photo_document
     )
 
     if status_filter:
@@ -286,7 +287,8 @@ async def list_contractors_summary(
             "cohf_aventus_signed_date": r.cohf_aventus_signed_date.isoformat() if r.cohf_aventus_signed_date else None,
             "quote_sheet_status": r.quote_sheet_status,
             "client_name": r.client_name,
-            "third_party_name": third_party_map.get(r.third_party_id) if r.third_party_id else None
+            "third_party_name": third_party_map.get(r.third_party_id) if r.third_party_id else None,
+            "photo_url": r.photo_document
         }
         for r in results
     ]
