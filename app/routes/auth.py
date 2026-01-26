@@ -5,6 +5,7 @@ from datetime import timedelta, datetime
 import uuid
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.models.contractor import Contractor
 from app.schemas.auth import Token, UserResponse, UserLogin, PasswordReset, CreateUserRequest
 from app.utils.auth import (
     verify_password,
@@ -125,11 +126,20 @@ async def refresh_token(
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Get current user information (works for both active and inactive first-time users)
+    For contractors, includes their photo from contractor documents if no profile photo is set.
     """
+    # If user is a contractor and doesn't have a profile photo, get it from contractor record
+    if current_user.contractor_id and not current_user.profile_photo:
+        contractor = db.query(Contractor).filter(Contractor.id == current_user.contractor_id).first()
+        if contractor and contractor.photo_document:
+            # Temporarily set the profile_photo for the response
+            current_user.profile_photo = contractor.photo_document
+
     return current_user
 
 
