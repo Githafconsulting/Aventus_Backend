@@ -37,6 +37,64 @@ from app.utils.payroll_pdf import generate_invoice_pdf
 router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
 
 
+def _batch_load_invoice_relations(invoices: list, db: Session) -> list[InvoiceListResponse]:
+    """
+    Batch load related entities for invoices to avoid N+1 queries.
+    Instead of 3 queries per invoice, this makes only 3 queries total.
+    """
+    if not invoices:
+        return []
+
+    # Collect all unique IDs
+    client_ids = {inv.client_id for inv in invoices if inv.client_id}
+    contractor_ids = {inv.contractor_id for inv in invoices if inv.contractor_id}
+    payroll_ids = {inv.payroll_id for inv in invoices if inv.payroll_id}
+
+    # Batch load all related entities (3 queries instead of 3*N)
+    clients_map = {}
+    if client_ids:
+        clients = db.query(Client).filter(Client.id.in_(client_ids)).all()
+        clients_map = {c.id: c for c in clients}
+
+    contractors_map = {}
+    if contractor_ids:
+        contractors = db.query(Contractor).filter(Contractor.id.in_(contractor_ids)).all()
+        contractors_map = {c.id: c for c in contractors}
+
+    payrolls_map = {}
+    if payroll_ids:
+        payrolls = db.query(Payroll).filter(Payroll.id.in_(payroll_ids)).all()
+        payrolls_map = {p.id: p for p in payrolls}
+
+    # Build response using lookup dictionaries
+    result = []
+    for invoice in invoices:
+        client = clients_map.get(invoice.client_id)
+        contractor = contractors_map.get(invoice.contractor_id)
+        payroll = payrolls_map.get(invoice.payroll_id)
+
+        result.append(InvoiceListResponse(
+            id=invoice.id,
+            payroll_id=invoice.payroll_id,
+            client_id=invoice.client_id,
+            client_name=client.company_name if client else None,
+            contractor_id=invoice.contractor_id,
+            contractor_name=f"{contractor.first_name} {contractor.surname}" if contractor else None,
+            invoice_number=invoice.invoice_number,
+            total_amount=invoice.total_amount,
+            amount_paid=invoice.amount_paid,
+            balance=invoice.balance,
+            currency=payroll.currency if payroll else None,
+            invoice_date=invoice.invoice_date,
+            due_date=invoice.due_date,
+            status=invoice.status,
+            period=payroll.period if payroll else None,
+            created_at=invoice.created_at,
+        ))
+
+    return result
+
+
 def get_invoice_service(db: Session = Depends(get_db)) -> InvoiceService:
     """Get invoice service instance."""
     invoice_repo = InvoiceRepository(db)
@@ -74,32 +132,8 @@ async def list_invoices(
         limit=limit,
     )
 
-    result = []
-    for invoice in invoices:
-        client = db.query(Client).filter(Client.id == invoice.client_id).first()
-        contractor = db.query(Contractor).filter(Contractor.id == invoice.contractor_id).first()
-        payroll = db.query(Payroll).filter(Payroll.id == invoice.payroll_id).first()
-
-        result.append(InvoiceListResponse(
-            id=invoice.id,
-            payroll_id=invoice.payroll_id,
-            client_id=invoice.client_id,
-            client_name=client.company_name if client else None,
-            contractor_id=invoice.contractor_id,
-            contractor_name=f"{contractor.first_name} {contractor.surname}" if contractor else None,
-            invoice_number=invoice.invoice_number,
-            total_amount=invoice.total_amount,
-            amount_paid=invoice.amount_paid,
-            balance=invoice.balance,
-            currency=payroll.currency if payroll else None,
-            invoice_date=invoice.invoice_date,
-            due_date=invoice.due_date,
-            status=invoice.status,
-            period=payroll.period if payroll else None,
-            created_at=invoice.created_at,
-        ))
-
-    return result
+    # Use batch loading to avoid N+1 queries (3 queries instead of 3*N)
+    return _batch_load_invoice_relations(invoices, db)
 
 
 @router.get("/stats", response_model=InvoiceStatsResponse)
@@ -121,32 +155,8 @@ async def get_overdue_invoices(
     repo = InvoiceRepository(db)
     invoices = await repo.get_overdue()
 
-    result = []
-    for invoice in invoices:
-        client = db.query(Client).filter(Client.id == invoice.client_id).first()
-        contractor = db.query(Contractor).filter(Contractor.id == invoice.contractor_id).first()
-        payroll = db.query(Payroll).filter(Payroll.id == invoice.payroll_id).first()
-
-        result.append(InvoiceListResponse(
-            id=invoice.id,
-            payroll_id=invoice.payroll_id,
-            client_id=invoice.client_id,
-            client_name=client.company_name if client else None,
-            contractor_id=invoice.contractor_id,
-            contractor_name=f"{contractor.first_name} {contractor.surname}" if contractor else None,
-            invoice_number=invoice.invoice_number,
-            total_amount=invoice.total_amount,
-            amount_paid=invoice.amount_paid,
-            balance=invoice.balance,
-            currency=payroll.currency if payroll else None,
-            invoice_date=invoice.invoice_date,
-            due_date=invoice.due_date,
-            status=invoice.status,
-            period=payroll.period if payroll else None,
-            created_at=invoice.created_at,
-        ))
-
-    return result
+    # Use batch loading to avoid N+1 queries
+    return _batch_load_invoice_relations(invoices, db)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceDetailResponse)

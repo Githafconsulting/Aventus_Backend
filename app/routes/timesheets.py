@@ -28,10 +28,16 @@ def get_all_timesheets(
 
     timesheets = query.order_by(Timesheet.created_at.desc()).all()
 
+    # Batch load all contractors to avoid N+1 queries
+    contractor_ids = {ts.contractor_id for ts in timesheets if ts.contractor_id}
+    contractors_map = {}
+    if contractor_ids:
+        contractors = db.query(Contractor).filter(Contractor.id.in_(contractor_ids)).all()
+        contractors_map = {c.id: c for c in contractors}
+
     result = []
     for ts in timesheets:
-        # Get contractor info
-        contractor = db.query(Contractor).filter(Contractor.id == ts.contractor_id).first()
+        contractor = contractors_map.get(ts.contractor_id)
         contractor_name = f"{contractor.first_name} {contractor.surname}" if contractor and contractor.first_name and contractor.surname else "Unknown"
 
         result.append({

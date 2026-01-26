@@ -541,9 +541,16 @@ def get_timesheets_ready_for_payroll(
         .all()
     )
 
+    # Batch load all contractors to avoid N+1 queries
+    contractor_ids = {ts.contractor_id for ts in timesheets if ts.contractor_id}
+    contractors_map = {}
+    if contractor_ids:
+        contractors = db.query(Contractor).filter(Contractor.id.in_(contractor_ids)).all()
+        contractors_map = {c.id: c for c in contractors}
+
     result = []
     for ts in timesheets:
-        contractor = db.query(Contractor).filter(Contractor.id == ts.contractor_id).first()
+        contractor = contractors_map.get(ts.contractor_id)
         if not contractor:
             continue
 
@@ -596,17 +603,19 @@ def get_all_payroll_records(
 
     payrolls = query.order_by(Payroll.created_at.desc()).all()
 
+    # Batch load all contractors to avoid N+1 queries
+    contractor_ids = {p.contractor_id for p in payrolls if p.contractor_id}
+    contractors_map = {}
+    if contractor_ids:
+        contractors = db.query(Contractor).filter(Contractor.id.in_(contractor_ids)).all()
+        contractors_map = {c.id: c for c in contractors}
+
     result = []
     for p in payrolls:
-        contractor = db.query(Contractor).filter(Contractor.id == p.contractor_id).first()
-        contractor_name = "Unknown"
-        contractor_email = None
-        client_name = None
-
-        if contractor:
-            contractor_name = _get_contractor_name(contractor)
-            contractor_email = contractor.email
-            client_name = contractor.client_name
+        contractor = contractors_map.get(p.contractor_id)
+        contractor_name = _get_contractor_name(contractor) if contractor else "Unknown"
+        contractor_email = contractor.email if contractor else None
+        client_name = contractor.client_name if contractor else None
 
         result.append({
             "id": p.id,
@@ -633,12 +642,12 @@ def get_all_payroll_records(
             "paid_at": p.paid_at,
         })
 
-    # Count by status
-    all_payrolls = db.query(Payroll).all()
+    # Count by status using SQL COUNT (not loading all records into memory)
+    from sqlalchemy import func
     status_counts = {
-        "calculated": len([p for p in all_payrolls if p.status == PayrollStatus.CALCULATED]),
-        "approved": len([p for p in all_payrolls if p.status == PayrollStatus.APPROVED]),
-        "paid": len([p for p in all_payrolls if p.status == PayrollStatus.PAID]),
+        "calculated": db.query(func.count(Payroll.id)).filter(Payroll.status == PayrollStatus.CALCULATED).scalar() or 0,
+        "approved": db.query(func.count(Payroll.id)).filter(Payroll.status == PayrollStatus.APPROVED).scalar() or 0,
+        "paid": db.query(func.count(Payroll.id)).filter(Payroll.status == PayrollStatus.PAID).scalar() or 0,
     }
 
     return {
