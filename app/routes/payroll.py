@@ -177,18 +177,26 @@ def _send_invoice_to_client(
     invoice_bytes: bytes
 ) -> bool:
     """Send invoice email to client. Returns True if successful."""
-    if not contractor.client_email:
+    # Use invoice_email1 as primary, fallback to invoice_email
+    client_email = contractor.invoice_email1 or contractor.invoice_email
+    if not client_email:
         return False
 
     try:
         from app.utils.email import send_email_with_attachments
 
+        # Handle None values safely
+        invoice_total = payroll.invoice_total or 0
+        vat_amount = payroll.vat_amount or 0
+        total_payable = payroll.total_payable or 0
+        vat_rate = payroll.vat_rate or 0
+
         table_rows = [
             ("Contractor", contractor_name),
             ("Period", payroll.period),
-            ("Invoice Total", f"{payroll.currency} {payroll.invoice_total:,.2f}"),
-            (f"VAT ({int(payroll.vat_rate * 100)}%)", f"{payroll.currency} {payroll.vat_amount:,.2f}"),
-            ("Total Payable", f"{payroll.currency} {payroll.total_payable:,.2f}"),
+            ("Invoice Total", f"{payroll.currency} {invoice_total:,.2f}"),
+            (f"VAT ({int(vat_rate * 100)}%)", f"{payroll.currency} {vat_amount:,.2f}"),
+            ("Total Payable", f"{payroll.currency} {total_payable:,.2f}"),
         ]
 
         client_body = f"""
@@ -207,7 +215,7 @@ def _send_invoice_to_client(
             """
 
         send_email_with_attachments(
-            to_email=contractor.client_email,
+            to_email=client_email,
             subject=f"Invoice - {contractor_name} - {payroll.period}",
             body=client_body,
             attachments=[{
@@ -216,7 +224,7 @@ def _send_invoice_to_client(
                 "content_type": "application/pdf"
             }]
         )
-        print(f"[INFO] Invoice email sent to client: {contractor.client_email}")
+        print(f"[INFO] Invoice email sent to client: {client_email}")
         return True
     except Exception as e:
         print(f"[WARNING] Failed to send invoice email to client: {e}")
@@ -236,11 +244,16 @@ def _send_payslip_to_contractor(
     try:
         from app.utils.email import send_email_with_attachments
 
+        # Handle None values safely
+        gross_pay = payroll.gross_pay or 0
+        net_salary = payroll.net_salary or 0
+        days_worked = payroll.days_worked or 0
+
         table_rows = [
             ("Period", payroll.period),
-            ("Days Worked", str(payroll.days_worked)),
-            ("Gross Pay", f"{payroll.currency} {payroll.gross_pay:,.2f}"),
-            ("Net Salary", f"{payroll.currency} {payroll.net_salary:,.2f}"),
+            ("Days Worked", str(days_worked)),
+            ("Gross Pay", f"{payroll.currency} {gross_pay:,.2f}"),
+            ("Net Salary", f"{payroll.currency} {net_salary:,.2f}"),
         ]
 
         contractor_body = f"""

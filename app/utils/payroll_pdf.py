@@ -1,5 +1,6 @@
 """
 Payroll PDF generators for payslips and invoices.
+Clean, professional design with single color scheme.
 """
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -9,86 +10,90 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from io import BytesIO
 from datetime import datetime
+from calendar import monthrange
 import os
 
 
-# Define colors
+# Brand color
 ORANGE = colors.HexColor('#FF6B00')
-DARK_GRAY = colors.HexColor('#1F2937')
-LIGHT_GRAY = colors.HexColor('#F3F4F6')
-GREEN = colors.HexColor('#10B981')
+BLACK = colors.HexColor('#111111')
+DARK_TEXT = colors.HexColor('#333333')
+LIGHT_TEXT = colors.HexColor('#666666')
+BORDER_COLOR = colors.HexColor('#DDDDDD')
+BG_LIGHT = colors.HexColor('#F8F8F8')
+WHITE = colors.white
 
 
 def _add_logo(elements):
-    """Add Aventus logo to PDF."""
+    """Add Aventus logo to PDF with proper sizing."""
     logo_path = os.path.join("app", "static", "av-logo.png")
     if os.path.exists(logo_path):
-        logo = Image(logo_path, width=50*mm, height=12*mm)
-        logo.hAlign = 'CENTER'
+        # Proper aspect ratio for logo
+        logo = Image(logo_path, width=40*mm, height=10*mm, kind='proportional')
+        logo.hAlign = 'LEFT'
         elements.append(logo)
-        elements.append(Spacer(1, 3*mm))
+        elements.append(Spacer(1, 5*mm))
 
 
-def _get_styles():
-    """Get common styles for PDF generation."""
-    styles = getSampleStyleSheet()
+def _number_to_words(amount: float, currency: str = "AED") -> str:
+    """Convert a number to words for payslip display."""
+    ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+            'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+            'seventeen', 'eighteen', 'nineteen']
+    tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
 
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Heading1'],
-        fontSize=18,
-        textColor=ORANGE,
-        spaceAfter=6,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
-    )
+    def convert_hundreds(n):
+        if n < 20:
+            return ones[n]
+        elif n < 100:
+            return tens[n // 10] + (('-' + ones[n % 10]) if n % 10 else '')
+        else:
+            return ones[n // 100] + ' hundred' + ((' and ' + convert_hundreds(n % 100)) if n % 100 else '')
 
-    section_style = ParagraphStyle(
-        'Section',
-        parent=styles['Heading3'],
-        fontSize=11,
-        textColor=DARK_GRAY,
-        spaceAfter=4,
-        spaceBefore=8,
-        fontName='Helvetica-Bold',
-    )
+    def convert(n):
+        if n < 1000:
+            return convert_hundreds(n)
+        elif n < 1000000:
+            return convert(n // 1000) + ' thousand' + ((' ' + convert_hundreds(n % 1000)) if n % 1000 else '')
+        elif n < 1000000000:
+            return convert(n // 1000000) + ' million' + ((' ' + convert(n % 1000000)) if n % 1000000 else '')
+        else:
+            return convert(n // 1000000000) + ' billion' + ((' ' + convert(n % 1000000000)) if n % 1000000000 else '')
 
-    body_style = ParagraphStyle(
-        'Body',
-        parent=styles['BodyText'],
-        fontSize=9,
-        alignment=TA_LEFT,
-        spaceAfter=4,
-        leading=12,
-        fontName='Helvetica'
-    )
+    whole = int(amount)
+    if whole == 0:
+        words = "zero"
+    else:
+        words = convert(whole)
 
-    small_style = ParagraphStyle(
-        'Small',
-        parent=body_style,
-        fontSize=8,
-        leading=10,
-    )
+    words = words.capitalize()
 
-    return {
-        'title': title_style,
-        'section': section_style,
-        'body': body_style,
-        'small': small_style,
-        'base': styles,
+    currency_names = {
+        'AED': 'dirhams',
+        'SAR': 'riyals',
+        'USD': 'dollars',
+        'GBP': 'pounds',
+        'EUR': 'euros',
     }
+    currency_word = currency_names.get(currency.upper(), currency.lower())
+
+    return f"{words} {currency_word}"
+
+
+def _get_pay_period_string(period: str) -> str:
+    """Convert 'November 2024' to 'November 01 - November 30, 2024'."""
+    try:
+        date = datetime.strptime(period, "%B %Y")
+        last_day = monthrange(date.year, date.month)[1]
+        return f"{date.strftime('%B')} 01 - {date.strftime('%B')} {last_day}, {date.year}"
+    except (ValueError, AttributeError):
+        return period or "Current Period"
 
 
 def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     """
-    Generate a payslip PDF for a contractor.
-
-    Args:
-        payroll: Payroll model instance
-        contractor: Contractor model instance
-
-    Returns:
-        BytesIO: PDF file in memory
+    Generate a clean, professional payslip PDF.
+    Single color scheme with bold/light text variations.
     """
     buffer = BytesIO()
 
@@ -97,218 +102,361 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
         pagesize=A4,
         rightMargin=20*mm,
         leftMargin=20*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm,
+        topMargin=20*mm,
+        bottomMargin=20*mm,
     )
 
     elements = []
-    styles = _get_styles()
 
-    # Add logo
+    # Safe value extraction
+    currency = payroll.currency or "AED"
+    gross_pay = payroll.gross_pay or 0
+    net_salary = payroll.net_salary or 0
+    monthly_rate = payroll.monthly_rate or 0
+    day_rate = payroll.day_rate or 0
+    days_worked = payroll.days_worked or 0
+    deductions = payroll.leave_deductibles or payroll.deductions or 0
+    contractor_name = f"{contractor.first_name} {contractor.surname}"
+
+    # =========================================================================
+    # HEADER
+    # =========================================================================
+
     _add_logo(elements)
 
     # Title
-    elements.append(Paragraph("PAYSLIP", styles['title']))
-    elements.append(Paragraph(payroll.period or "Current Period", ParagraphStyle(
-        'Subtitle',
-        parent=styles['base']['Normal'],
-        fontSize=12,
-        alignment=TA_CENTER,
-        spaceAfter=8,
-        fontName='Helvetica'
-    )))
+    title_style = ParagraphStyle(
+        'Title',
+        fontSize=22,
+        textColor=ORANGE,
+        fontName='Helvetica-Bold',
+        spaceAfter=2,
+    )
+    elements.append(Paragraph("Payslip", title_style))
 
-    # Horizontal rule
-    elements.append(Table([['', '']], colWidths=[170*mm], style=TableStyle([
-        ('LINEABOVE', (0, 0), (-1, 0), 1, ORANGE),
-    ])))
-    elements.append(Spacer(1, 4*mm))
+    # Reference info - light text
+    ref_style = ParagraphStyle(
+        'RefStyle',
+        fontSize=10,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
+        spaceAfter=1,
+    )
 
-    # Employee Information
-    contractor_name = f"{contractor.first_name} {contractor.surname}"
-    info_data = [
-        ['Employee:', contractor_name, 'Employee ID:', str(contractor.id)[:8]],
-        ['Client:', contractor.client_name or 'N/A', 'Period:', payroll.period or 'N/A'],
-        ['Currency:', payroll.currency, 'Pay Date:', datetime.now().strftime('%B %d, %Y')],
+    payslip_ref = f"PS-{payroll.id}"
+    pay_date = datetime.now().strftime('%d/%m/%Y')
+    pay_period = _get_pay_period_string(payroll.period)
+
+    elements.append(Paragraph(f"{payslip_ref}", ref_style))
+    elements.append(Paragraph(f"Pay Date: {pay_date}", ref_style))
+    elements.append(Paragraph(f"Pay Period: {pay_period}", ref_style))
+    elements.append(Spacer(1, 8*mm))
+
+    # =========================================================================
+    # EMPLOYEE & EMPLOYER DETAILS
+    # =========================================================================
+
+    # Section header style
+    section_header = ParagraphStyle(
+        'SectionHeader',
+        fontSize=9,
+        textColor=ORANGE,
+        fontName='Helvetica-Bold',
+        spaceAfter=3,
+    )
+
+    # Bold text style
+    bold_style = ParagraphStyle(
+        'BoldText',
+        fontSize=10,
+        textColor=BLACK,
+        fontName='Helvetica-Bold',
+        spaceAfter=1,
+    )
+
+    # Light text style
+    light_style = ParagraphStyle(
+        'LightText',
+        fontSize=9,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
+        spaceAfter=1,
+    )
+
+    # Two column layout
+    employee_col = [
+        Paragraph("Employee Details", section_header),
+        Paragraph(contractor_name, bold_style),
+        Paragraph(contractor.client_name or '', light_style),
+    ]
+    if contractor.role:
+        employee_col.append(Paragraph(contractor.role, light_style))
+
+    employer_col = [
+        Paragraph("Employer Details", section_header),
+        Paragraph("Aventus Talent Consultancy LLC", bold_style),
+        Paragraph("Office 14, Golden Mile 4,", light_style),
+        Paragraph("Palm Jumeirah, Dubai, UAE", light_style),
     ]
 
-    info_table = Table(info_data, colWidths=[25*mm, 55*mm, 25*mm, 55*mm])
-    info_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('TEXTCOLOR', (0, 0), (0, -1), DARK_GRAY),
-        ('TEXTCOLOR', (2, 0), (2, -1), DARK_GRAY),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GRAY),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+    details_table = Table(
+        [[employee_col, employer_col]],
+        colWidths=[85*mm, 85*mm]
+    )
+    details_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 6*mm))
+    elements.append(details_table)
+    elements.append(Spacer(1, 8*mm))
 
-    # Earnings Section
-    elements.append(Paragraph("<b>Earnings</b>", styles['section']))
+    # =========================================================================
+    # EARNINGS
+    # =========================================================================
 
-    # Handle different payment types (daily vs monthly)
-    currency = payroll.currency or "AED"
-    gross_pay = payroll.gross_pay or payroll.net_salary or 0
+    # Section title row with orange background
+    earnings_title = Table(
+        [['Earnings', 'Amount']],
+        colWidths=[130*mm, 40*mm]
+    )
+    earnings_title.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING', (0, 0), (0, 0), 8),
+        ('RIGHTPADDING', (1, 0), (1, 0), 8),
+    ]))
+    elements.append(earnings_title)
 
-    if payroll.day_rate and payroll.days_worked:
-        # Daily rate contractor
+    # Build earnings rows
+    if monthly_rate and monthly_rate > 0:
+        # Monthly breakdown
+        basic_pay = round(monthly_rate * 0.50, 2)
+        housing = round(monthly_rate * 0.25, 2)
+        transport = round(monthly_rate * 0.1667, 2)
+        leave_allow = round(monthly_rate - basic_pay - housing - transport, 2)
+
         earnings_data = [
-            ['Description', 'Rate', 'Quantity', 'Amount'],
-            ['Day Rate', f"{currency} {payroll.day_rate:,.2f}", f"{payroll.days_worked} days", f"{currency} {gross_pay:,.2f}"],
+            ['Basic Pay', f"{currency} {basic_pay:,.2f}"],
+            ['Housing Allowance', f"{currency} {housing:,.2f}"],
+            ['Transport Allowance', f"{currency} {transport:,.2f}"],
+            ['Leave Allowance', f"{currency} {leave_allow:,.2f}"],
         ]
-    elif payroll.monthly_rate:
-        # Monthly salary contractor
+    elif day_rate and days_worked:
+        total = day_rate * days_worked
         earnings_data = [
-            ['Description', 'Rate', 'Quantity', 'Amount'],
-            ['Monthly Salary', f"{currency} {payroll.monthly_rate:,.2f}", "1 month", f"{currency} {gross_pay:,.2f}"],
+            ['Day Rate', f"{currency} {day_rate:,.2f}"],
+            ['Days Worked', f"{days_worked}"],
+            ['Gross Earnings', f"{currency} {total:,.2f}"],
         ]
     else:
-        # Fallback - just show net salary
         earnings_data = [
-            ['Description', 'Rate', 'Quantity', 'Amount'],
-            ['Salary', '-', '-', f"{currency} {gross_pay:,.2f}"],
+            ['Gross Salary', f"{currency} {gross_pay:,.2f}"],
         ]
 
-    earnings_table = Table(earnings_data, colWidths=[60*mm, 40*mm, 30*mm, 40*mm])
+    earnings_table = Table(earnings_data, colWidths=[130*mm, 40*mm])
     earnings_table.setStyle(TableStyle([
-        # Header
-        ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        # Data
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BACKGROUND', (0, 1), (-1, -1), LIGHT_GRAY),
-        # Grid
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (0, -1), DARK_TEXT),
+        ('TEXTCOLOR', (1, 0), (1, -1), BLACK),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (0, -1), 8),
+        ('RIGHTPADDING', (1, 0), (1, -1), 8),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.5, BORDER_COLOR),
     ]))
     elements.append(earnings_table)
-    elements.append(Spacer(1, 4*mm))
-
-    # Deductions Section (if any)
-    deductions = payroll.deductions or 0
-    if deductions > 0:
-        elements.append(Paragraph("<b>Deductions</b>", styles['section']))
-
-        deductions_data = [
-            ['Description', 'Amount'],
-            ['Deductions', f"{currency} {deductions:,.2f}"],
-        ]
-
-        deductions_table = Table(deductions_data, colWidths=[130*mm, 40*mm])
-        deductions_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EF4444')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('BACKGROUND', (0, 1), (-1, -1), LIGHT_GRAY),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(deductions_table)
-        elements.append(Spacer(1, 4*mm))
-
-    # Net Pay Summary
-    elements.append(Paragraph("<b>Payment Summary</b>", styles['section']))
-
-    # Use net_salary
-    net_pay = payroll.net_salary or 0
-
-    summary_data = [
-        ['Gross Pay', f"{currency} {gross_pay:,.2f}"],
-        ['Deductions', f"-{currency} {deductions:,.2f}"],
-        ['Net Pay', f"{currency} {net_pay:,.2f}"],
-    ]
-
-    summary_table = Table(summary_data, colWidths=[130*mm, 40*mm])
-    summary_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BACKGROUND', (0, 0), (-1, 1), LIGHT_GRAY),
-        ('BACKGROUND', (0, 2), (-1, 2), GREEN),
-        ('TEXTCOLOR', (0, 2), (-1, 2), colors.white),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('LINEABOVE', (0, 2), (-1, 2), 1, DARK_GRAY),
-    ]))
-    elements.append(summary_table)
     elements.append(Spacer(1, 6*mm))
 
-    # Banking Details (if available)
-    if contractor.contractor_bank_name or contractor.contractor_iban:
-        elements.append(Paragraph("<b>Payment Details</b>", styles['section']))
+    # =========================================================================
+    # DEDUCTIONS
+    # =========================================================================
 
+    deductions_title = Table(
+        [['Deductions', 'Amount']],
+        colWidths=[130*mm, 40*mm]
+    )
+    deductions_title.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), BLACK),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING', (0, 0), (0, 0), 8),
+        ('RIGHTPADDING', (1, 0), (1, 0), 8),
+    ]))
+    elements.append(deductions_title)
+
+    # Build deductions rows
+    deductions_data = []
+    expenses = payroll.expenses_reimbursement or 0
+
+    if expenses > 0:
+        deductions_data.append(['Expenses Reimbursement', f"+{currency} {expenses:,.2f}"])
+
+    if deductions > 0:
+        deductions_data.append(['Leave Deductions', f"-{currency} {deductions:,.2f}"])
+
+    # Pro-rata for partial month
+    if monthly_rate and days_worked and payroll.total_calendar_days:
+        total_days = payroll.total_calendar_days
+        if days_worked < total_days:
+            prorata = monthly_rate - (monthly_rate / total_days * days_worked)
+            if prorata > 0:
+                deductions_data.append([f'Pro-rata ({days_worked}/{total_days} days)', f"-{currency} {prorata:,.2f}"])
+
+    if not deductions_data:
+        deductions_data.append(['No deductions', f"{currency} 0.00"])
+
+    deductions_table = Table(deductions_data, colWidths=[130*mm, 40*mm])
+    deductions_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (0, -1), DARK_TEXT),
+        ('TEXTCOLOR', (1, 0), (1, -1), BLACK),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (0, -1), 8),
+        ('RIGHTPADDING', (1, 0), (1, -1), 8),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.5, BORDER_COLOR),
+    ]))
+    elements.append(deductions_table)
+    elements.append(Spacer(1, 6*mm))
+
+    # =========================================================================
+    # TOTAL PAY
+    # =========================================================================
+
+    total_table = Table(
+        [['Total Pay', f"{currency} {net_salary:,.2f}"]],
+        colWidths=[130*mm, 40*mm]
+    )
+    total_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('LEFTPADDING', (0, 0), (0, 0), 8),
+        ('RIGHTPADDING', (1, 0), (1, 0), 8),
+    ]))
+    elements.append(total_table)
+
+    # Amount in words
+    amount_words = _number_to_words(net_salary, currency)
+    words_table = Table(
+        [['Total Pay in Words:', amount_words]],
+        colWidths=[45*mm, 125*mm]
+    )
+    words_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, 0), 'Helvetica-Oblique'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), DARK_TEXT),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (0, 0), 8),
+        ('BACKGROUND', (0, 0), (-1, -1), BG_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+    ]))
+    elements.append(words_table)
+    elements.append(Spacer(1, 10*mm))
+
+    # =========================================================================
+    # PAYMENT DETAILS
+    # =========================================================================
+
+    elements.append(Paragraph("Payment Details", section_header))
+    elements.append(Paragraph("Payment made to employee's bank account.", light_style))
+
+    if contractor.contractor_bank_name or contractor.contractor_iban:
         bank_info = []
         if contractor.contractor_bank_name:
-            bank_info.append(['Bank Name:', contractor.contractor_bank_name])
-        if contractor.contractor_account_name:
-            bank_info.append(['Account Name:', contractor.contractor_account_name])
-        if contractor.contractor_account_no:
-            bank_info.append(['Account Number:', contractor.contractor_account_no])
+            bank_info.append(f"Bank: {contractor.contractor_bank_name}")
         if contractor.contractor_iban:
-            bank_info.append(['IBAN:', contractor.contractor_iban])
+            iban = contractor.contractor_iban
+            masked = iban[:4] + '*' * (len(iban) - 8) + iban[-4:] if len(iban) > 8 else iban
+            bank_info.append(f"IBAN: {masked}")
+        elements.append(Paragraph(" | ".join(bank_info), light_style))
 
-        if bank_info:
-            bank_table = Table(bank_info, colWidths=[40*mm, 130*mm])
-            bank_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                ('TOPPADDING', (0, 0), (-1, -1), 4),
-                ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GRAY),
-                ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
-            ]))
-            elements.append(bank_table)
-            elements.append(Spacer(1, 4*mm))
+    elements.append(Spacer(1, 12*mm))
 
-    # Footer
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
-        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.grey),
+    # =========================================================================
+    # SIGNATURES
+    # =========================================================================
+
+    sig_table = Table(
+        [
+            ['Employee Signature', '', 'Employer Signature'],
+            ['', '', ''],
+            ['', '', ''],
+            ['_________________________', '', '_________________________'],
+            [contractor_name, '', 'Aventus Talent Consultancy LLC'],
+        ],
+        colWidths=[60*mm, 50*mm, 60*mm]
+    )
+    sig_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('TEXTCOLOR', (0, 0), (-1, 0), DARK_TEXT),
+        ('FONTSIZE', (0, 3), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 4), (-1, 4), LIGHT_TEXT),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(sig_table)
+    elements.append(Spacer(1, 12*mm))
+
+    # =========================================================================
+    # FOOTER
+    # =========================================================================
+
+    # Line
+    elements.append(Table([['']], colWidths=[170*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, BORDER_COLOR),
     ])))
-    elements.append(Spacer(1, 2*mm))
+    elements.append(Spacer(1, 3*mm))
 
     footer_style = ParagraphStyle(
         'Footer',
-        parent=styles['small'],
+        fontSize=7,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
         alignment=TA_CENTER,
-        fontSize=8,
-        textColor=colors.grey
+        leading=10,
     )
-    footer_text = f"""
-    <b>AVENTUS CONTRACTOR MANAGEMENT</b><br/>
-    Generated on {datetime.now().strftime('%B %d, %Y at %H:%M')}<br/>
-    <i>This is a computer-generated payslip.</i>
-    """
-    elements.append(Paragraph(footer_text, footer_style))
+
+    footer = """This is a system-generated payslip, therefore signature is not mandatory.
+The information contained herein is confidential and intended only for the use of the named person.
+Aventus Talent Consultancy LLC | Dubai, UAE"""
+
+    elements.append(Paragraph(footer, footer_style))
 
     doc.build(elements)
     buffer.seek(0)
-
     return buffer
 
 
 def generate_invoice_pdf(payroll, contractor) -> BytesIO:
     """
-    Generate an invoice PDF for client billing.
-
-    Args:
-        payroll: Payroll model instance
-        contractor: Contractor model instance
-
-    Returns:
-        BytesIO: PDF file in memory
+    Generate a clean, professional invoice PDF.
+    Single color scheme with bold/light text variations.
     """
     buffer = BytesIO()
 
@@ -317,208 +465,252 @@ def generate_invoice_pdf(payroll, contractor) -> BytesIO:
         pagesize=A4,
         rightMargin=20*mm,
         leftMargin=20*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm,
+        topMargin=20*mm,
+        bottomMargin=20*mm,
     )
 
     elements = []
-    styles = _get_styles()
 
-    # Add logo
-    _add_logo(elements)
-
-    # Title
-    elements.append(Paragraph("INVOICE", styles['title']))
-
-    # Invoice number and date
-    invoice_number = f"INV-{payroll.id:06d}"
-    invoice_date = datetime.now().strftime('%B %d, %Y')
-
-    elements.append(Paragraph(f"Invoice #: {invoice_number}", ParagraphStyle(
-        'InvoiceNum',
-        parent=styles['base']['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
-        spaceAfter=2,
-        fontName='Helvetica-Bold'
-    )))
-    elements.append(Paragraph(f"Date: {invoice_date}", ParagraphStyle(
-        'InvoiceDate',
-        parent=styles['base']['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
-        spaceAfter=8,
-        fontName='Helvetica'
-    )))
-
-    # Horizontal rule
-    elements.append(Table([['', '']], colWidths=[170*mm], style=TableStyle([
-        ('LINEABOVE', (0, 0), (-1, 0), 1, ORANGE),
-    ])))
-    elements.append(Spacer(1, 4*mm))
-
-    # Bill To / From section
+    # Safe values
+    currency = payroll.currency or "AED"
+    invoice_total = payroll.invoice_total or payroll.net_salary or 0
+    vat_rate = payroll.vat_rate or 0
+    vat_amount = payroll.vat_amount or 0
+    total_payable = payroll.total_payable or invoice_total
+    net_salary = payroll.net_salary or 0
+    total_accruals = payroll.total_accruals or 0
+    management_fee = payroll.management_fee or 0
     contractor_name = f"{contractor.first_name} {contractor.surname}"
 
-    bill_from = [
-        Paragraph("<b>FROM:</b>", styles['body']),
-        Paragraph("Aventus HR Solutions", styles['body']),
-        Paragraph("Dubai, UAE", styles['body']),
+    # =========================================================================
+    # HEADER
+    # =========================================================================
+
+    _add_logo(elements)
+
+    title_style = ParagraphStyle(
+        'Title',
+        fontSize=22,
+        textColor=ORANGE,
+        fontName='Helvetica-Bold',
+        spaceAfter=2,
+    )
+    elements.append(Paragraph("Invoice", title_style))
+
+    ref_style = ParagraphStyle(
+        'RefStyle',
+        fontSize=10,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
+        spaceAfter=1,
+    )
+
+    invoice_number = f"INV-{payroll.id:06d}"
+    invoice_date = datetime.now().strftime('%d/%m/%Y')
+
+    elements.append(Paragraph(f"{invoice_number}", ref_style))
+    elements.append(Paragraph(f"Date: {invoice_date}", ref_style))
+    elements.append(Paragraph(f"Period: {payroll.period or 'N/A'}", ref_style))
+    elements.append(Spacer(1, 8*mm))
+
+    # =========================================================================
+    # FROM / TO
+    # =========================================================================
+
+    section_header = ParagraphStyle(
+        'SectionHeader',
+        fontSize=9,
+        textColor=ORANGE,
+        fontName='Helvetica-Bold',
+        spaceAfter=3,
+    )
+
+    bold_style = ParagraphStyle(
+        'BoldText',
+        fontSize=10,
+        textColor=BLACK,
+        fontName='Helvetica-Bold',
+        spaceAfter=1,
+    )
+
+    light_style = ParagraphStyle(
+        'LightText',
+        fontSize=9,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
+        spaceAfter=1,
+    )
+
+    from_col = [
+        Paragraph("From", section_header),
+        Paragraph("Aventus Talent Consultancy LLC", bold_style),
+        Paragraph("Office 14, Golden Mile 4,", light_style),
+        Paragraph("Palm Jumeirah, Dubai, UAE", light_style),
     ]
 
-    bill_to = [
-        Paragraph("<b>BILL TO:</b>", styles['body']),
-        Paragraph(contractor.client_name or "Client Company", styles['body']),
+    to_col = [
+        Paragraph("Bill To", section_header),
+        Paragraph(contractor.client_name or "Client Company", bold_style),
     ]
-
-    # Add invoice address if available
     if contractor.invoice_address_line1:
-        bill_to.append(Paragraph(contractor.invoice_address_line1, styles['body']))
+        to_col.append(Paragraph(contractor.invoice_address_line1, light_style))
     if contractor.invoice_address_line2:
-        bill_to.append(Paragraph(contractor.invoice_address_line2, styles['body']))
+        to_col.append(Paragraph(contractor.invoice_address_line2, light_style))
     if contractor.invoice_country:
-        bill_to.append(Paragraph(contractor.invoice_country, styles['body']))
+        to_col.append(Paragraph(contractor.invoice_country, light_style))
 
-    address_table = Table([[bill_from, bill_to]], colWidths=[85*mm, 85*mm])
+    address_table = Table([[from_col, to_col]], colWidths=[85*mm, 85*mm])
     address_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(address_table)
-    elements.append(Spacer(1, 6*mm))
+    elements.append(Spacer(1, 8*mm))
 
-    # Invoice Details
-    elements.append(Paragraph("<b>Service Details</b>", styles['section']))
+    # =========================================================================
+    # SERVICE DETAILS
+    # =========================================================================
 
-    # Handle None values
-    currency = payroll.currency or "AED"
-    invoice_amount = payroll.invoice_amount or payroll.invoice_total or payroll.total_payable or payroll.net_salary or 0
-    charge_rate = payroll.charge_rate_day or payroll.day_rate or 0
-    days_worked = payroll.days_worked or 0
-
-    if charge_rate and days_worked:
-        rate_str = f"{currency} {charge_rate:,.2f}/day"
-        qty_str = f"{days_worked}"
-    else:
-        rate_str = "-"
-        qty_str = "-"
-
-    details_data = [
-        ['Description', 'Period', 'Rate', 'Qty', 'Amount'],
-        [
-            f"Contractor Services - {contractor_name}",
-            payroll.period or "N/A",
-            rate_str,
-            qty_str,
-            f"{currency} {invoice_amount:,.2f}"
-        ],
-    ]
-
-    details_table = Table(details_data, colWidths=[55*mm, 30*mm, 35*mm, 15*mm, 35*mm])
-    details_table.setStyle(TableStyle([
-        # Header
+    service_title = Table(
+        [['Description', 'Amount']],
+        colWidths=[130*mm, 40*mm]
+    )
+    service_title.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
-        # Data
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BACKGROUND', (0, 1), (-1, -1), LIGHT_GRAY),
-        # Grid
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('LEFTPADDING', (0, 0), (0, 0), 8),
+        ('RIGHTPADDING', (1, 0), (1, 0), 8),
     ]))
-    elements.append(details_table)
+    elements.append(service_title)
+
+    service_data = [
+        [f"Contractor Services - {contractor_name}", f"{currency} {net_salary:,.2f}"],
+    ]
+    if total_accruals > 0:
+        service_data.append(['Third Party Accruals', f"{currency} {total_accruals:,.2f}"])
+    if management_fee > 0:
+        service_data.append(['Management Fee', f"{currency} {management_fee:,.2f}"])
+
+    service_table = Table(service_data, colWidths=[130*mm, 40*mm])
+    service_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (0, -1), DARK_TEXT),
+        ('TEXTCOLOR', (1, 0), (1, -1), BLACK),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (0, -1), 8),
+        ('RIGHTPADDING', (1, 0), (1, -1), 8),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.5, BORDER_COLOR),
+    ]))
+    elements.append(service_table)
     elements.append(Spacer(1, 4*mm))
 
-    # Total Section
-    total_data = [
-        ['Subtotal:', f"{currency} {invoice_amount:,.2f}"],
-        ['VAT (0%):', f"{currency} 0.00"],
-        ['Total Due:', f"{currency} {invoice_amount:,.2f}"],
+    # =========================================================================
+    # TOTALS
+    # =========================================================================
+
+    vat_percent = int(vat_rate * 100) if vat_rate else 0
+
+    totals_data = [
+        ['Subtotal:', f"{currency} {invoice_total:,.2f}"],
+        [f'VAT ({vat_percent}%):', f"{currency} {vat_amount:,.2f}"],
     ]
 
-    total_table = Table(total_data, colWidths=[130*mm, 40*mm])
-    total_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
+    totals_table = Table(totals_data, colWidths=[130*mm, 40*mm])
+    totals_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('TEXTCOLOR', (0, 0), (-1, -1), DARK_TEXT),
         ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BACKGROUND', (0, 0), (-1, 1), LIGHT_GRAY),
-        ('BACKGROUND', (0, 2), (-1, 2), ORANGE),
-        ('TEXTCOLOR', (0, 2), (-1, 2), colors.white),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('LINEABOVE', (0, 2), (-1, 2), 1, DARK_GRAY),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (1, 0), (1, -1), 8),
     ]))
-    elements.append(total_table)
+    elements.append(totals_table)
+
+    # Total Due
+    total_due = Table(
+        [['Total Due:', f"{currency} {total_payable:,.2f}"]],
+        colWidths=[130*mm, 40*mm]
+    )
+    total_due.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
+        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('ALIGN', (0, 0), (0, 0), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('RIGHTPADDING', (1, 0), (1, 0), 8),
+    ]))
+    elements.append(total_due)
+    elements.append(Spacer(1, 10*mm))
+
+    # =========================================================================
+    # PAYMENT TERMS & BANK
+    # =========================================================================
+
+    elements.append(Paragraph("Payment Terms", section_header))
+    terms = contractor.client_payment_terms or "Net 30 days"
+    elements.append(Paragraph(f"Payment is due within {terms} from the invoice date.", light_style))
     elements.append(Spacer(1, 6*mm))
 
-    # Payment Terms
-    elements.append(Paragraph("<b>Payment Terms</b>", styles['section']))
-
-    terms = contractor.client_payment_terms or "Net 30 days"
-    terms_text = f"Payment is due within {terms} from the invoice date."
-
-    terms_table = Table([[terms_text]], colWidths=[170*mm])
-    terms_table.setStyle(TableStyle([
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GRAY),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(terms_table)
-    elements.append(Spacer(1, 4*mm))
-
-    # Bank Details for Payment
-    elements.append(Paragraph("<b>Bank Details for Payment</b>", styles['section']))
+    elements.append(Paragraph("Bank Details for Payment", section_header))
 
     bank_data = [
-        ['Bank Name:', 'Aventus HR Solutions Bank'],
-        ['Account Name:', 'Aventus HR Solutions LLC'],
+        ['Bank Name:', 'Emirates NBD'],
+        ['Account Name:', 'Aventus Talent Consultancy LLC'],
         ['IBAN:', 'AE12 3456 7890 1234 5678 901'],
-        ['SWIFT/BIC:', 'AVENTUAE'],
+        ['SWIFT/BIC:', 'EBILORAE'],
     ]
 
-    bank_table = Table(bank_data, colWidths=[40*mm, 130*mm])
+    bank_table = Table(bank_data, colWidths=[35*mm, 135*mm])
     bank_table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GRAY),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, -1), DARK_TEXT),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('BACKGROUND', (0, 0), (-1, -1), BG_LIGHT),
+        ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(bank_table)
-    elements.append(Spacer(1, 6*mm))
+    elements.append(Spacer(1, 12*mm))
 
-    # Footer
-    elements.append(Table([['', '']], colWidths=[160*mm], style=TableStyle([
-        ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.grey),
+    # =========================================================================
+    # FOOTER
+    # =========================================================================
+
+    elements.append(Table([['']], colWidths=[170*mm], style=TableStyle([
+        ('LINEABOVE', (0, 0), (-1, 0), 0.5, BORDER_COLOR),
     ])))
-    elements.append(Spacer(1, 2*mm))
+    elements.append(Spacer(1, 3*mm))
 
     footer_style = ParagraphStyle(
         'Footer',
-        parent=styles['small'],
+        fontSize=7,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
         alignment=TA_CENTER,
-        fontSize=8,
-        textColor=colors.grey
+        leading=10,
     )
-    footer_text = f"""
-    <b>AVENTUS CONTRACTOR MANAGEMENT</b><br/>
-    Generated on {datetime.now().strftime('%B %d, %Y at %H:%M')}<br/>
-    <i>Thank you for your business.</i>
-    """
-    elements.append(Paragraph(footer_text, footer_style))
+
+    elements.append(Paragraph("Thank you for your business.", footer_style))
+    elements.append(Paragraph("Aventus Talent Consultancy LLC | Dubai, UAE", footer_style))
 
     doc.build(elements)
     buffer.seek(0)
-
     return buffer

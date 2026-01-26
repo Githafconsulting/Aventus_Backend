@@ -171,7 +171,9 @@ async def list_contractors_summary(
         Contractor.role,
         Contractor.cohf_status,
         Contractor.cohf_aventus_signed_date,
-        Contractor.quote_sheet_status
+        Contractor.quote_sheet_status,
+        Contractor.client_name,
+        Contractor.third_party_id
     )
 
     if status_filter:
@@ -181,18 +183,26 @@ async def list_contractors_summary(
     offset = (page - 1) * limit
     results = query.order_by(Contractor.created_at.desc()).offset(offset).limit(limit).all()
 
-    # Get contractor IDs for batch work order query
+    # Get contractor IDs and third party IDs for batch queries
     contractor_ids = [r.id for r in results]
+    third_party_ids = [r.third_party_id for r in results if r.third_party_id]
 
     # Batch query work orders for all contractors
     work_orders = db.query(WorkOrder).filter(
         WorkOrder.contractor_id.in_(contractor_ids)
     ).all() if contractor_ids else []
 
-    # Create a mapping of contractor_id to work order status
+    # Batch query third parties
+    third_parties = db.query(ThirdParty).filter(
+        ThirdParty.id.in_(third_party_ids)
+    ).all() if third_party_ids else []
+
+    # Create mappings
     work_order_map = {}
     for wo in work_orders:
         work_order_map[wo.contractor_id] = wo.status.value if hasattr(wo.status, 'value') else wo.status
+
+    third_party_map = {tp.id: tp.company_name for tp in third_parties}
 
     def get_display_status(contractor_status, work_order_status):
         """
@@ -274,7 +284,9 @@ async def list_contractors_summary(
             "role": r.role,
             "cohf_status": r.cohf_status,
             "cohf_aventus_signed_date": r.cohf_aventus_signed_date.isoformat() if r.cohf_aventus_signed_date else None,
-            "quote_sheet_status": r.quote_sheet_status
+            "quote_sheet_status": r.quote_sheet_status,
+            "client_name": r.client_name,
+            "third_party_name": third_party_map.get(r.third_party_id) if r.third_party_id else None
         }
         for r in results
     ]
