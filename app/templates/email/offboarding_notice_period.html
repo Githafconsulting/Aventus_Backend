@@ -1,0 +1,45 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    This is a reminder that you are currently in your notice period with {{ company_name }}.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#128197;</div>
+    <div class="document-title">Notice Period Status</div>
+    <p class="document-desc">
+        You have <strong>{{ days_remaining }} days</strong> remaining in your notice period.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Important Dates</div>
+    <div class="cred-row">
+        <span class="cred-label">Notice Start Date</span>
+        <span class="cred-value">{{ notice_start_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Last Working Date</span>
+        <span class="cred-value">{{ last_working_date }}</span>
+    </div>
+</div>
+
+<div class="info-box">
+    <strong>During Your Notice Period</strong>
+    <p>Please ensure all your work is properly documented and handed over. Our HR team will coordinate the knowledge transfer process with you.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    If you have any questions about the offboarding process or need assistance, please don't hesitate to reach out to your HR representative.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}

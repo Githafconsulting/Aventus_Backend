@@ -1,0 +1,60 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    Your contract extension agreement is ready for signature. Please review the extension terms and sign to complete the process.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#128221;</div>
+    <div class="document-title">Extension Agreement Ready</div>
+    <p class="document-desc">
+        Please sign your contract extension agreement to extend your contract until <strong>{{ new_end_date }}</strong>.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Extension Summary</div>
+    <div class="cred-row">
+        <span class="cred-label">Current End Date</span>
+        <span class="cred-value">{{ original_end_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">New End Date</span>
+        <span class="cred-value">{{ new_end_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Extension Duration</span>
+        <span class="cred-value">{{ extension_months }} months</span>
+    </div>
+    {% if new_rate %}
+    <div class="cred-row">
+        <span class="cred-label">Updated Rate</span>
+        <span class="cred-value">{{ currency }} {{ new_rate }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="cta-container">
+    <a href="{{ signing_link }}" class="cta-button">Review & Sign Extension</a>
+</div>
+
+<div class="notice">
+    <strong>Time-Sensitive Document</strong>
+    <p>This signing link will expire on <strong>{{ expiry_date }}</strong>. Please sign at your earliest convenience.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Before You Sign</strong>
+    <p>Please review the extension agreement carefully. If you have any questions or concerns, contact our HR team before signing.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}

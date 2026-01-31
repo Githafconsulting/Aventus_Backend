@@ -1,0 +1,52 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    We are writing to inform you that the offboarding process has been initiated for your contract with {{ company_name }}.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#128203;</div>
+    <div class="document-title">Offboarding Notice</div>
+    <p class="document-desc">
+        Your offboarding has been initiated due to: <strong>{{ reason }}</strong>
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Important Dates</div>
+    <div class="cred-row">
+        <span class="cred-label">Notice Period Start Date</span>
+        <span class="cred-value">{{ notice_start_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Last Working Date</span>
+        <span class="cred-value">{{ last_working_date }}</span>
+    </div>
+    {% if notice_period_days > 0 %}
+    <div class="cred-row">
+        <span class="cred-label">Notice Period</span>
+        <span class="cred-value">{{ notice_period_days }} days</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="notice">
+    <strong>Next Steps</strong>
+    <p>Our HR team will be in touch to discuss the details of your offboarding process, including final settlement and document handover procedures.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Questions?</strong>
+    <p>If you have any questions about this process, please contact your HR representative or reply to this email.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}

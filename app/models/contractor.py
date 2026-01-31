@@ -34,6 +34,14 @@ class ContractorStatus(str, enum.Enum):
     SIGNED = "signed"
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    # Offboarding statuses
+    NOTICE_PERIOD = "notice_period"          # In notice period before offboarding
+    OFFBOARDING = "offboarding"              # Offboarding in progress
+    OFFBOARDED = "offboarded"                # Successfully offboarded (terminal but rehirable)
+    # Extension status
+    EXTENSION_PENDING = "extension_pending"  # Contract extension in progress
+    # Terminal status
+    TERMINATED = "terminated"                # Contractor terminated (legacy, use OFFBOARDED)
 
 
 class OnboardingRoute(str, enum.Enum):
@@ -319,6 +327,16 @@ class Contractor(Base):
     # Generated Contract
     generated_contract = Column(Text, nullable=True)
 
+    # Offboarding fields
+    offboarding_status = Column(String, nullable=True)  # Quick status check
+    offboarded_date = Column(DateTime(timezone=True), nullable=True)
+    offboarding_reason = Column(String, nullable=True)
+    is_offboarded = Column(String, nullable=True, default="false")  # For easy querying
+
+    # Extension tracking
+    current_extension_id = Column(String, nullable=True)  # Current active extension
+    total_extensions = Column(String, nullable=True, default="0")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -331,3 +349,5 @@ class Contractor(Base):
     invoices = relationship("Invoice", back_populates="contractor", cascade="all, delete-orphan")
     work_orders = relationship("WorkOrder", back_populates="contractor", cascade="all, delete-orphan")
     quote_sheets = relationship("QuoteSheet", back_populates="contractor", cascade="all, delete-orphan")
+    offboarding_records = relationship("OffboardingRecord", back_populates="contractor", cascade="all, delete-orphan")
+    contract_extensions = relationship("ContractExtension", back_populates="contractor", cascade="all, delete-orphan")

@@ -140,16 +140,41 @@ class ContractorStateMachine:
         ContractorStatus.ACTIVE: {
             ContractorStatus.SUSPENDED,
             ContractorStatus.TERMINATED,
+            ContractorStatus.NOTICE_PERIOD,   # Start offboarding with notice
+            ContractorStatus.OFFBOARDING,     # Direct offboarding (no notice)
+            ContractorStatus.EXTENSION_PENDING,  # Start extension process
         },
 
         ContractorStatus.SUSPENDED: {
             ContractorStatus.ACTIVE,      # Can be reactivated
             ContractorStatus.TERMINATED,
+            ContractorStatus.OFFBOARDING,  # Can be offboarded while suspended
         },
 
-        # Terminal states - no transitions out
+        # Extension states
+        ContractorStatus.EXTENSION_PENDING: {
+            ContractorStatus.ACTIVE,  # Extension completed or rejected
+        },
+
+        # Offboarding states
+        ContractorStatus.NOTICE_PERIOD: {
+            ContractorStatus.OFFBOARDING,  # Notice period ends
+            ContractorStatus.ACTIVE,       # Cancel offboarding
+        },
+
+        ContractorStatus.OFFBOARDING: {
+            ContractorStatus.OFFBOARDED,   # Complete offboarding
+            ContractorStatus.ACTIVE,       # Cancel offboarding
+        },
+
+        # Terminal states
         ContractorStatus.CANCELLED: set(),
         ContractorStatus.TERMINATED: set(),
+
+        # Offboarded is terminal but allows rehiring
+        ContractorStatus.OFFBOARDED: {
+            ContractorStatus.DRAFT,  # Rehiring starts new onboarding
+        },
     }
 
     @classmethod
@@ -257,6 +282,21 @@ class ContractorStateMachine:
         return len(cls.TRANSITIONS.get(status, set())) == 0
 
     @classmethod
+    def is_offboarding(cls, status: ContractorStatus) -> bool:
+        """Check if contractor is in offboarding process."""
+        return status in {ContractorStatus.NOTICE_PERIOD, ContractorStatus.OFFBOARDING}
+
+    @classmethod
+    def is_offboarded(cls, status: ContractorStatus) -> bool:
+        """Check if contractor has been offboarded."""
+        return status == ContractorStatus.OFFBOARDED
+
+    @classmethod
+    def can_rehire(cls, status: ContractorStatus) -> bool:
+        """Check if a contractor can be rehired from this status."""
+        return status == ContractorStatus.OFFBOARDED
+
+    @classmethod
     def get_workflow_progress(
         cls,
         status: ContractorStatus,
@@ -333,4 +373,7 @@ class ContractorStateMachine:
             "percentage": round((current_step / total_steps) * 100) if total_steps > 0 else 0,
             "status": status.value,
             "is_complete": status == ContractorStatus.ACTIVE,
+            "is_offboarding": cls.is_offboarding(status),
+            "is_offboarded": cls.is_offboarded(status),
+            "can_rehire": cls.can_rehire(status),
         }

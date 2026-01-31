@@ -51,6 +51,14 @@ class ContractorStatus(str, Enum):
     CANCELLED = "cancelled"
     TERMINATED = "terminated"
 
+    # Offboarding statuses
+    NOTICE_PERIOD = "notice_period"          # In notice period before offboarding
+    OFFBOARDING = "offboarding"              # Offboarding in progress
+    OFFBOARDED = "offboarded"                # Successfully offboarded (terminal but rehirable)
+
+    # Extension status
+    EXTENSION_PENDING = "extension_pending"  # Contract extension in progress
+
     @classmethod
     def initial_statuses(cls) -> List["ContractorStatus"]:
         """Statuses at the beginning of onboarding."""
@@ -59,12 +67,22 @@ class ContractorStatus(str, Enum):
     @classmethod
     def active_statuses(cls) -> List["ContractorStatus"]:
         """Statuses for active contractors."""
-        return [cls.ACTIVE]
+        return [cls.ACTIVE, cls.EXTENSION_PENDING]
 
     @classmethod
     def terminal_statuses(cls) -> List["ContractorStatus"]:
         """Final statuses (no further transitions)."""
-        return [cls.CANCELLED, cls.TERMINATED]
+        return [cls.CANCELLED, cls.TERMINATED, cls.OFFBOARDED]
+
+    @classmethod
+    def offboarding_statuses(cls) -> List["ContractorStatus"]:
+        """Statuses during offboarding process."""
+        return [cls.NOTICE_PERIOD, cls.OFFBOARDING]
+
+    @classmethod
+    def rehirable_statuses(cls) -> List["ContractorStatus"]:
+        """Statuses that allow rehiring."""
+        return [cls.OFFBOARDED]
 
 
 class OnboardingRoute(str, Enum):

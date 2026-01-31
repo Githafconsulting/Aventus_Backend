@@ -12,6 +12,8 @@ from app.models.payroll import Payroll, PayrollStatus
 from app.models.payslip import Payslip, PayslipStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoicePayment
 from app.models.notification import Notification, NotificationType
+from app.models.offboarding import OffboardingRecord, OffboardingReason, OffboardingStatus
+from app.models.contract_extension import ContractExtension, ExtensionStatus
 
 __all__ = [
     "User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet",
@@ -19,5 +21,7 @@ __all__ = [
     "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus",
     "Proposal", "ProposalStatus", "Payroll", "PayrollStatus",
     "Payslip", "PayslipStatus", "Invoice", "InvoiceStatus", "InvoicePayment",
-    "Notification", "NotificationType"
+    "Notification", "NotificationType",
+    "OffboardingRecord", "OffboardingReason", "OffboardingStatus",
+    "ContractExtension", "ExtensionStatus"
 ]

@@ -406,3 +406,275 @@ class NotificationService:
         )
 
         return result.success
+
+    # ============ Offboarding Notifications ============
+
+    async def send_offboarding_initiated_email(
+        self,
+        contractor_email: str,
+        contractor_name: str,
+        reason: str,
+        notice_start_date: str,
+        last_working_date: str,
+        notice_period_days: int,
+    ) -> bool:
+        """
+        Send offboarding initiated notification to contractor.
+
+        Args:
+            contractor_email: Recipient email
+            contractor_name: Contractor's name
+            reason: Offboarding reason
+            notice_start_date: Notice period start
+            last_working_date: Last working date
+            notice_period_days: Notice period duration
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "offboarding_initiated",
+            contractor_name=contractor_name,
+            reason=reason,
+            notice_start_date=notice_start_date,
+            last_working_date=last_working_date,
+            notice_period_days=notice_period_days,
+        )
+
+        result = await self.email.send(
+            to=contractor_email,
+            subject=f"Offboarding Notice - {settings.company_name}",
+            html=html,
+        )
+
+        logger.info(
+            "Offboarding initiated email sent",
+            extra={
+                "to": contractor_email,
+                "success": result.success,
+            }
+        )
+
+        return result.success
+
+    async def send_offboarding_settlement_email(
+        self,
+        contractor_email: str,
+        contractor_name: str,
+        currency: str,
+        total_settlement: str,
+        pro_rata_salary: str = None,
+        days_worked: int = 0,
+        unused_leave_payout: str = None,
+        leave_days_remaining: str = None,
+        gratuity_eosb: str = None,
+        pending_reimbursements: str = None,
+        deductions: str = None,
+    ) -> bool:
+        """
+        Send settlement details to contractor.
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "offboarding_settlement",
+            contractor_name=contractor_name,
+            currency=currency,
+            total_settlement=total_settlement,
+            pro_rata_salary=pro_rata_salary,
+            days_worked=days_worked,
+            unused_leave_payout=unused_leave_payout,
+            leave_days_remaining=leave_days_remaining,
+            gratuity_eosb=gratuity_eosb,
+            pending_reimbursements=pending_reimbursements,
+            deductions=deductions,
+        )
+
+        result = await self.email.send(
+            to=contractor_email,
+            subject=f"Final Settlement Details - {settings.company_name}",
+            html=html,
+        )
+
+        return result.success
+
+    async def send_offboarding_completed_email(
+        self,
+        contractor_email: str,
+        contractor_name: str,
+        effective_date: str,
+        currency: str,
+        total_settlement: str,
+        termination_letter_url: str = None,
+        experience_letter_url: str = None,
+        clearance_certificate_url: str = None,
+        final_payslip_url: str = None,
+    ) -> bool:
+        """
+        Send offboarding completed notification with document links.
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "offboarding_completed",
+            contractor_name=contractor_name,
+            effective_date=effective_date,
+            currency=currency,
+            total_settlement=total_settlement,
+            termination_letter_url=termination_letter_url,
+            experience_letter_url=experience_letter_url,
+            clearance_certificate_url=clearance_certificate_url,
+            final_payslip_url=final_payslip_url,
+        )
+
+        result = await self.email.send(
+            to=contractor_email,
+            subject=f"Offboarding Complete - {settings.company_name}",
+            html=html,
+        )
+
+        logger.info(
+            "Offboarding completed email sent",
+            extra={
+                "to": contractor_email,
+                "success": result.success,
+            }
+        )
+
+        return result.success
+
+    # ============ Extension Notifications ============
+
+    async def send_extension_request_email(
+        self,
+        admin_email: str,
+        contractor_name: str,
+        original_end_date: str,
+        new_end_date: str,
+        extension_months: int,
+        requested_by: str,
+        review_link: str,
+        currency: str = None,
+        new_rate: str = None,
+        rate_change_reason: str = None,
+    ) -> bool:
+        """
+        Send extension request notification to admin.
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "extension_request",
+            contractor_name=contractor_name,
+            original_end_date=original_end_date,
+            new_end_date=new_end_date,
+            extension_months=extension_months,
+            requested_by=requested_by,
+            review_link=review_link,
+            currency=currency,
+            new_rate=new_rate,
+            rate_change_reason=rate_change_reason,
+        )
+
+        result = await self.email.send(
+            to=admin_email,
+            subject=f"Extension Request - {contractor_name}",
+            html=html,
+        )
+
+        return result.success
+
+    async def send_extension_approved_email(
+        self,
+        contractor_email: str,
+        contractor_name: str,
+        original_end_date: str,
+        new_end_date: str,
+        extension_months: int,
+        approved_by: str,
+        approved_date: str,
+        currency: str = None,
+        new_rate: str = None,
+    ) -> bool:
+        """
+        Send extension approved notification to contractor.
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "extension_approved",
+            contractor_name=contractor_name,
+            original_end_date=original_end_date,
+            new_end_date=new_end_date,
+            extension_months=extension_months,
+            approved_by=approved_by,
+            approved_date=approved_date,
+            currency=currency,
+            new_rate=new_rate,
+        )
+
+        result = await self.email.send(
+            to=contractor_email,
+            subject=f"Contract Extension Approved - {settings.company_name}",
+            html=html,
+        )
+
+        logger.info(
+            "Extension approved email sent",
+            extra={
+                "to": contractor_email,
+                "success": result.success,
+            }
+        )
+
+        return result.success
+
+    async def send_extension_signature_request_email(
+        self,
+        contractor_email: str,
+        contractor_name: str,
+        original_end_date: str,
+        new_end_date: str,
+        extension_months: int,
+        signing_link: str,
+        expiry_date: str,
+        currency: str = None,
+        new_rate: str = None,
+    ) -> bool:
+        """
+        Send extension signature request to contractor.
+
+        Returns:
+            True if sent successfully
+        """
+        html = self.templates.render(
+            "extension_signature_request",
+            contractor_name=contractor_name,
+            original_end_date=original_end_date,
+            new_end_date=new_end_date,
+            extension_months=extension_months,
+            signing_link=signing_link,
+            expiry_date=expiry_date,
+            currency=currency,
+            new_rate=new_rate,
+        )
+
+        result = await self.email.send(
+            to=contractor_email,
+            subject=f"Sign Your Contract Extension - {settings.company_name}",
+            html=html,
+        )
+
+        logger.info(
+            "Extension signature request email sent",
+            extra={
+                "to": contractor_email,
+                "success": result.success,
+            }
+        )
+
+        return result.success

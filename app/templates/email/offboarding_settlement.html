@@ -1,0 +1,68 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    Your final settlement has been calculated and approved. Please review the details below.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#128176;</div>
+    <div class="document-title">Final Settlement Summary</div>
+    <p class="document-desc">
+        Total Settlement Amount: <strong>{{ currency }} {{ total_settlement }}</strong>
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Settlement Breakdown</div>
+    {% if pro_rata_salary %}
+    <div class="cred-row">
+        <span class="cred-label">Pro-rata Salary ({{ days_worked }} days)</span>
+        <span class="cred-value">{{ currency }} {{ pro_rata_salary }}</span>
+    </div>
+    {% endif %}
+    {% if unused_leave_payout %}
+    <div class="cred-row">
+        <span class="cred-label">Unused Leave Payout ({{ leave_days_remaining }} days)</span>
+        <span class="cred-value">{{ currency }} {{ unused_leave_payout }}</span>
+    </div>
+    {% endif %}
+    {% if gratuity_eosb %}
+    <div class="cred-row">
+        <span class="cred-label">Gratuity / EOSB</span>
+        <span class="cred-value">{{ currency }} {{ gratuity_eosb }}</span>
+    </div>
+    {% endif %}
+    {% if pending_reimbursements %}
+    <div class="cred-row">
+        <span class="cred-label">Pending Reimbursements</span>
+        <span class="cred-value">{{ currency }} {{ pending_reimbursements }}</span>
+    </div>
+    {% endif %}
+    {% if deductions %}
+    <div class="cred-row">
+        <span class="cred-label">Deductions</span>
+        <span class="cred-value">-{{ currency }} {{ deductions }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="notice">
+    <strong>Payment Information</strong>
+    <p>Your final settlement will be processed and transferred to your registered bank account. You will receive a final payslip once the payment has been completed.</p>
+</div>
+
+<div class="divider"></div>
+
+<div class="info-box">
+    <strong>Questions About Your Settlement?</strong>
+    <p>If you have any questions or concerns about the settlement calculation, please contact our HR team within 7 days.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}

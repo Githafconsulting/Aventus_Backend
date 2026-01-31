@@ -1,0 +1,67 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Contract Extension Request</h2>
+
+<p class="intro-text">
+    A contract extension has been requested for <strong>{{ contractor_name }}</strong>. Please review the details below.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#128196;</div>
+    <div class="document-title">Extension Request</div>
+    <p class="document-desc">
+        Extension of <strong>{{ extension_months }} months</strong> requested.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Extension Details</div>
+    <div class="cred-row">
+        <span class="cred-label">Contractor</span>
+        <span class="cred-value">{{ contractor_name }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Current End Date</span>
+        <span class="cred-value">{{ original_end_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Proposed New End Date</span>
+        <span class="cred-value">{{ new_end_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Extension Duration</span>
+        <span class="cred-value">{{ extension_months }} months</span>
+    </div>
+    {% if new_rate %}
+    <div class="cred-row">
+        <span class="cred-label">Proposed New Rate</span>
+        <span class="cred-value">{{ currency }} {{ new_rate }}</span>
+    </div>
+    {% if rate_change_reason %}
+    <div class="cred-row">
+        <span class="cred-label">Rate Change Reason</span>
+        <span class="cred-value">{{ rate_change_reason }}</span>
+    </div>
+    {% endif %}
+    {% endif %}
+    <div class="cred-row">
+        <span class="cred-label">Requested By</span>
+        <span class="cred-value">{{ requested_by }}</span>
+    </div>
+</div>
+
+<div class="cta-container">
+    <a href="{{ review_link }}" class="cta-button">Review Extension Request</a>
+</div>
+
+<div class="notice">
+    <strong>Action Required</strong>
+    <p>Please review this extension request and approve or reject it through the admin portal.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">{{ company_name }} System</span>
+</div>
+{% endblock %}

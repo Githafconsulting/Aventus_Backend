@@ -1,0 +1,59 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    Great news! Your contract extension with {{ company_name }} has been approved.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#9989;</div>
+    <div class="document-title">Extension Approved</div>
+    <p class="document-desc">
+        Your contract has been extended by <strong>{{ extension_months }} months</strong>.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Extension Details</div>
+    <div class="cred-row">
+        <span class="cred-label">Original End Date</span>
+        <span class="cred-value">{{ original_end_date }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">New End Date</span>
+        <span class="cred-value">{{ new_end_date }}</span>
+    </div>
+    {% if new_rate %}
+    <div class="cred-row">
+        <span class="cred-label">New Rate</span>
+        <span class="cred-value">{{ currency }} {{ new_rate }}</span>
+    </div>
+    {% endif %}
+    <div class="cred-row">
+        <span class="cred-label">Approved By</span>
+        <span class="cred-value">{{ approved_by }}</span>
+    </div>
+    <div class="cred-row">
+        <span class="cred-label">Approved Date</span>
+        <span class="cred-value">{{ approved_date }}</span>
+    </div>
+</div>
+
+<div class="info-box">
+    <strong>Next Steps</strong>
+    <p>You will receive an extension agreement document to sign shortly. Please review and sign the document to complete the extension process.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    We look forward to continuing our partnership with you.
+</p>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}

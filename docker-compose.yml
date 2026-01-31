@@ -1,0 +1,42 @@
+# Aventus - Full Stack Docker Compose
+# Usage: docker-compose up --build
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./Aventus Backend
+      dockerfile: docker/Dockerfile
+    container_name: aventus-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./Aventus Backend/.env
+    networks:
+      - aventus-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./Aventus
+      dockerfile: Dockerfile
+    container_name: aventus-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aventus-network
+    restart: unless-stopped
+
+networks:
+  aventus-network:
+    driver: bridge

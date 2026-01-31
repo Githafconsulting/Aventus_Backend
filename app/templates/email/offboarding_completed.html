@@ -1,0 +1,75 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="greeting">Dear {{ contractor_name }},</h2>
+
+<p class="intro-text">
+    We confirm that your offboarding process with {{ company_name }} has been completed. We thank you for your contributions during your time with us.
+</p>
+
+<div class="document-box">
+    <div class="document-icon">&#9989;</div>
+    <div class="document-title">Offboarding Complete</div>
+    <p class="document-desc">
+        Your contract has been officially concluded as of <strong>{{ effective_date }}</strong>.
+    </p>
+</div>
+
+<div class="credentials">
+    <div class="credentials-title">Your Documents</div>
+    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">The following documents are available for download:</p>
+
+    {% if termination_letter_url %}
+    <div class="cred-row">
+        <a href="{{ termination_letter_url }}" style="color: #FF6B00; text-decoration: none;">
+            &#128196; Termination Letter
+        </a>
+    </div>
+    {% endif %}
+
+    {% if experience_letter_url %}
+    <div class="cred-row">
+        <a href="{{ experience_letter_url }}" style="color: #FF6B00; text-decoration: none;">
+            &#128196; Experience Letter
+        </a>
+    </div>
+    {% endif %}
+
+    {% if clearance_certificate_url %}
+    <div class="cred-row">
+        <a href="{{ clearance_certificate_url }}" style="color: #FF6B00; text-decoration: none;">
+            &#128196; Clearance Certificate
+        </a>
+    </div>
+    {% endif %}
+
+    {% if final_payslip_url %}
+    <div class="cred-row">
+        <a href="{{ final_payslip_url }}" style="color: #FF6B00; text-decoration: none;">
+            &#128196; Final Payslip
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="info-box">
+    <strong>Final Settlement</strong>
+    <p>Your final settlement of <strong>{{ currency }} {{ total_settlement }}</strong> has been processed and will be transferred to your registered bank account.</p>
+</div>
+
+<div class="divider"></div>
+
+<p class="intro-text">
+    We wish you all the best in your future endeavors. Should you need any documentation or have questions, please don't hesitate to reach out.
+</p>
+
+<div class="notice">
+    <strong>Stay Connected</strong>
+    <p>We value our relationship with our former contractors. Feel free to connect with us for future opportunities.</p>
+</div>
+
+<div class="signature">
+    Best regards,<br>
+    <span class="signature-name">The {{ company_name }} HR Team</span>
+</div>
+{% endblock %}
