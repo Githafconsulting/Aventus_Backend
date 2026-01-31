@@ -36,7 +36,7 @@ jobs:
 
     - name: Build Docker image
       run: |
-        docker build -t $IMAGE_NAME:latest .
+        docker build -f docker/Dockerfile -t $IMAGE_NAME:latest .
 
     - name: List Docker images
       run: |
