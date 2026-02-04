@@ -1,0 +1,57 @@
+name: Build and Push to Amazon ECR
+
+on:
+  push:
+    branches: [ master ]
+  workflow_call: 
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push-ecr:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: aventus-backend
+      AWS_REGION: me-central-1
+      AWS_ACCOUNT_ID: 610437688029
+      ECR_REPOSITORY: av-backend-repo
+      GH_ACTION_ROLE: GitHubActionsTempECRAccess
+
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v2
+
+    - name: Configure AWS credentials via OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.GH_ACTION_ROLE }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build Docker image
+      run: |
+        docker build -f docker/Dockerfile -t $IMAGE_NAME:latest .
+
+    - name: List Docker images
+      run: |
+        docker images
+
+    - name: Tag and push Docker image to ECR
+      env:
+        ECR_REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        GIT_SHA: ${{ github.sha }}
+      run: |
+        IMAGE_URI=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}
+        SHORT_SHA=${GIT_SHA::7}
+
+        docker tag $IMAGE_NAME:latest $IMAGE_URI:latest
+        docker tag $IMAGE_NAME:latest $IMAGE_URI:sha-$SHORT_SHA
+
+        docker push $IMAGE_URI:latest
+        docker push $IMAGE_URI:sha-$SHORT_SHA
