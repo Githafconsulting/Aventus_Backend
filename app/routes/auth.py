@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
@@ -17,6 +17,7 @@ from app.utils.auth import (
     generate_temp_password
 )
 from app.utils.email import send_activation_email
+from app.utils.storage import storage
 from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -362,6 +363,68 @@ async def delete_user(
     db.commit()
 
     return {"message": "User deleted successfully"}
+
+
+@router.post("/users/{user_id}/upload-photo")
+async def upload_user_photo(
+    user_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role([UserRole.SUPERADMIN, UserRole.ADMIN])),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a profile photo for a user
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file type. Allowed: JPEG, PNG, GIF, WebP"
+        )
+
+    # Check file size (5MB max)
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 5MB"
+        )
+    # Reset file position for upload
+    await file.seek(0)
+
+    # Get user
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Admin cannot update superadmin photos
+    if current_user.role == UserRole.ADMIN and user.role == UserRole.SUPERADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin users cannot update superadmin accounts"
+        )
+
+    try:
+        # Upload to Supabase Storage
+        photo_url = await storage.upload_document(file, f"users/{user_id}", "profile_photo")
+
+        # Update user profile photo
+        user.profile_photo = photo_url
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+
+        return {"profile_photo": photo_url}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload photo: {str(e)}"
+        )
 
 
 @router.get("/my-contracts")
