@@ -122,19 +122,7 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     # HEADER
     # =========================================================================
 
-    _add_logo(elements)
-
-    # Title
-    title_style = ParagraphStyle(
-        'Title',
-        fontSize=22,
-        textColor=ORANGE,
-        fontName='Helvetica-Bold',
-        spaceAfter=2,
-    )
-    elements.append(Paragraph("Payslip", title_style))
-
-    # Reference info - light text
+    # Reference info styles
     ref_style = ParagraphStyle(
         'RefStyle',
         fontSize=10,
@@ -143,13 +131,45 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
         spaceAfter=1,
     )
 
+    title_style = ParagraphStyle(
+        'Title',
+        fontSize=22,
+        textColor=ORANGE,
+        fontName='Helvetica-Bold',
+        spaceAfter=0,
+        alignment=TA_RIGHT,
+    )
+
     payslip_ref = f"PS-{payroll.id}"
     pay_date = datetime.now().strftime('%d/%m/%Y')
     pay_period = _get_pay_period_string(payroll.period)
 
-    elements.append(Paragraph(f"{payslip_ref}", ref_style))
-    elements.append(Paragraph(f"Pay Date: {pay_date}", ref_style))
-    elements.append(Paragraph(f"Pay Period: {pay_period}", ref_style))
+    # Left column: reference info
+    left_col = [
+        Paragraph(f"{payslip_ref}", ref_style),
+        Paragraph(f"Pay Date: {pay_date}", ref_style),
+        Paragraph(f"Pay Period: {pay_period}", ref_style),
+    ]
+
+    # Right column: logo + "Payslip" title
+    right_col = []
+    logo_path = os.path.join("app", "static", "av-logo.png")
+    if os.path.exists(logo_path):
+        logo = Image(logo_path, width=40*mm, height=10*mm, kind='proportional')
+        logo.hAlign = 'RIGHT'
+        right_col.append(logo)
+    right_col.append(Paragraph("Payslip", title_style))
+
+    header_table = Table(
+        [[left_col, right_col]],
+        colWidths=[95*mm, 75*mm]
+    )
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(header_table)
     elements.append(Spacer(1, 8*mm))
 
     # =========================================================================
