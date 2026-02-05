@@ -122,56 +122,84 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     # HEADER
     # =========================================================================
 
-    # Reference info styles
-    ref_style = ParagraphStyle(
-        'RefStyle',
-        fontSize=10,
-        textColor=LIGHT_TEXT,
-        fontName='Helvetica',
-        spaceAfter=1,
-    )
-
+    # Title style
     title_style = ParagraphStyle(
         'Title',
-        fontSize=22,
+        fontSize=20,
         textColor=ORANGE,
         fontName='Helvetica-Bold',
         spaceAfter=0,
         alignment=TA_RIGHT,
     )
 
+    # Reference label + value styles
+    ref_label_style = ParagraphStyle(
+        'RefLabel',
+        fontSize=8,
+        textColor=LIGHT_TEXT,
+        fontName='Helvetica',
+    )
+    ref_value_style = ParagraphStyle(
+        'RefValue',
+        fontSize=9,
+        textColor=BLACK,
+        fontName='Helvetica-Bold',
+    )
+
     payslip_ref = f"PS-{payroll.id}"
     pay_date = datetime.now().strftime('%d/%m/%Y')
     pay_period = _get_pay_period_string(payroll.period)
 
-    # Left column: reference info
-    left_col = [
-        Paragraph(f"{payslip_ref}", ref_style),
-        Paragraph(f"Pay Date: {pay_date}", ref_style),
-        Paragraph(f"Pay Period: {pay_period}", ref_style),
-    ]
-
-    # Right column: logo + "Payslip" title
-    right_col = []
+    # Logo + title on the right
     logo_path = os.path.join("app", "static", "av-logo.png")
+    right_content = []
     if os.path.exists(logo_path):
-        logo = Image(logo_path, width=40*mm, height=10*mm, kind='proportional')
-        logo.hAlign = 'RIGHT'
-        right_col.append(logo)
-    right_col.append(Paragraph("Payslip", title_style))
+        logo = Image(logo_path, width=35*mm, height=9*mm, kind='proportional')
+        right_content.append([logo])
+    right_content.append([Paragraph("Payslip", title_style)])
 
+    right_table = Table(right_content, colWidths=[55*mm])
+    right_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+    ]))
+
+    # Reference info on the left as a clean grid
+    ref_data = [
+        [Paragraph("Reference", ref_label_style), Paragraph(payslip_ref, ref_value_style)],
+        [Paragraph("Pay Date", ref_label_style), Paragraph(pay_date, ref_value_style)],
+        [Paragraph("Pay Period", ref_label_style), Paragraph(pay_period, ref_value_style)],
+    ]
+    ref_table = Table(ref_data, colWidths=[22*mm, 75*mm])
+    ref_table.setStyle(TableStyle([
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+
+    # Main header table
     header_table = Table(
-        [[left_col, right_col]],
-        colWidths=[95*mm, 75*mm]
+        [[ref_table, right_table]],
+        colWidths=[115*mm, 55*mm]
     )
     header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+        ('VALIGN', (0, 0), (0, 0), 'MIDDLE'),
+        ('VALIGN', (1, 0), (1, 0), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(header_table)
-    elements.append(Spacer(1, 8*mm))
+
+    # Divider line
+    elements.append(Spacer(1, 3*mm))
+    elements.append(Table([['']], colWidths=[170*mm], style=TableStyle([
+        ('LINEBELOW', (0, 0), (-1, 0), 1, ORANGE),
+    ])))
+    elements.append(Spacer(1, 6*mm))
 
     # =========================================================================
     # EMPLOYEE & EMPLOYER DETAILS
@@ -301,13 +329,16 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     # DEDUCTIONS
     # =========================================================================
 
+    ORANGE_LIGHT = colors.HexColor('#FFF0E6')
+    ORANGE_DARK = colors.HexColor('#CC5500')
+
     deductions_title = Table(
         [['Deductions', 'Amount']],
         colWidths=[130*mm, 40*mm]
     )
     deductions_title.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), BLACK),
-        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
+        ('BACKGROUND', (0, 0), (-1, 0), ORANGE_LIGHT),
+        ('TEXTCOLOR', (0, 0), (-1, 0), ORANGE_DARK),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
