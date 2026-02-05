@@ -166,6 +166,7 @@ def generate_payslip_pdf(payroll, contractor) -> BytesIO:
     )
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
