@@ -351,3 +351,4 @@ class Contractor(Base):
     quote_sheets = relationship("QuoteSheet", back_populates="contractor", cascade="all, delete-orphan")
     offboarding_records = relationship("OffboardingRecord", back_populates="contractor", cascade="all, delete-orphan")
     contract_extensions = relationship("ContractExtension", back_populates="contractor", cascade="all, delete-orphan")
+    expenses = relationship("Expense", back_populates="contractor", cascade="all, delete-orphan")

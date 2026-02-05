@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.payroll import Payroll, PayrollStatus, RateType
 from app.models.timesheet import Timesheet, TimesheetStatus
 from app.models.contractor import Contractor
+from app.services.expense_service import get_approved_expenses_total
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["payroll"])
 
@@ -470,8 +471,12 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
     unpaid_leave_deductible = unpaid_leave_days * prorata_day_rate if rate_type == RateType.MONTHLY else 0
     total_leave_deductibles = sick_leave_deductible + vacation_leave_deductible + unpaid_leave_deductible
 
-    # Net salary calculation
-    expenses_reimbursement = 0  # Default to 0 for auto-calculation
+    # Auto-sum approved expenses for this contractor and period
+    try:
+        _period_date = datetime.strptime(period, "%B %Y")
+        expenses_reimbursement = get_approved_expenses_total(db, contractor.id, _period_date.month, _period_date.year)
+    except (ValueError, AttributeError):
+        expenses_reimbursement = 0
     if rate_type == RateType.MONTHLY:
         # For monthly rate: if leave balance is positive (has available leave), pay full salary
         # Only deduct for unpaid leave days
@@ -765,6 +770,14 @@ def calculate_payroll(
     leave_deductibles = 0
     if leave_balance < 0 and rate_type == RateType.MONTHLY:
         leave_deductibles = prorata_day_rate * abs(leave_balance)
+
+    # ========== EXPENSES REIMBURSEMENT ==========
+    # Auto-sum approved expenses if not manually provided
+    if expenses_reimbursement == 0:
+        try:
+            expenses_reimbursement = get_approved_expenses_total(db, contractor.id, period_date.month, period_date.year)
+        except Exception:
+            expenses_reimbursement = 0
 
     # ========== NET SALARY CALCULATION ==========
     if rate_type == RateType.MONTHLY:

@@ -29,6 +29,7 @@ from app.models.timesheet import Timesheet, TimesheetStatus
 from app.models.contractor import Contractor
 from app.repositories.interfaces.payroll_repo import IPayrollRepository
 from app.utils.contractor_data_extractor import ContractorDataExtractor
+from app.services.expense_service import get_approved_expenses_total
 
 
 class PayrollService:
@@ -176,6 +177,16 @@ class PayrollService:
             period=timesheet.month,
             timesheet_id=timesheet_id,
         )
+
+        # Auto-sum approved expenses if not manually provided
+        if expenses_reimbursement == 0:
+            try:
+                period_date = datetime.strptime(timesheet.month, "%B %Y")
+                expenses_reimbursement = get_approved_expenses_total(
+                    self.db, contractor.id, period_date.month, period_date.year
+                )
+            except Exception:
+                pass
 
         # Get appropriate calculator
         calculator = PayrollCalculatorFactory.create(contractor_info.rate_type)
