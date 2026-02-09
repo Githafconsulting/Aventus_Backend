@@ -62,7 +62,7 @@ def _invoke_email_lambda(email_type: str, recipient: str, data: dict) -> bool:
         client.invoke(
             FunctionName=settings.email_lambda_function_name,
             InvocationType="RequestResponse",
-            Payload=json.dumps(event),
+            Payload=json.dumps(event).encode("utf-8"),
         )
         print(f"[EMAIL] Lambda invoked: {email_type} -> {recipient}")
         return True
