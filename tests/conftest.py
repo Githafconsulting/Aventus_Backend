@@ -174,10 +174,10 @@ def contractor_service(mock_contractor_repo):
 
 
 @pytest.fixture
-def notification_service(mock_email_sender, mock_template_engine):
-    """Notification service with mocked dependencies."""
+def notification_service():
+    """Notification service instance."""
     from app.services.notification_service import NotificationService
-    return NotificationService(mock_email_sender, mock_template_engine)
+    return NotificationService()
 
 
 # =============================================================================

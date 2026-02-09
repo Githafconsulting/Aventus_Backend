@@ -18,8 +18,8 @@ pydantic-settings
 # Cryptography
 cryptography
 
-# Email
-resend
+# AWS (Email via Lambda/SES)
+boto3
 
 # PDF Generation
 reportlab

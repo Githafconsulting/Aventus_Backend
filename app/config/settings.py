@@ -60,11 +60,12 @@ class Settings(BaseSettings):
         env="PASSWORD_RESET_URL",
     )
 
-    # Resend (Email)
-    resend_api_key: str = Field(default="", env="RESEND_API_KEY")
+    # AWS (Email via Lambda/SES)
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="me-central-1", env="AWS_REGION")
+    email_lambda_function_name: str = Field(default="", env="EMAIL_LAMBDA_FUNCTION_NAME")
     from_email: str = Field(default="noreply@aventushr.com", env="FROM_EMAIL")
-    email_from_address: str = Field(default="noreply@aventushr.com", env="EMAIL_FROM_ADDRESS")
-    email_from_name: str = Field(default="Aventus HR", env="EMAIL_FROM_NAME")
 
     # Supabase (Storage)
     supabase_url: str = Field(default="", env="SUPABASE_URL")

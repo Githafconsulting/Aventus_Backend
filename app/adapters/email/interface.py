@@ -75,7 +75,7 @@ class IEmailSender(ABC):
     while maintaining the same interface.
 
     Usage:
-        sender = ResendEmailSender()
+        sender = LambdaEmailSender()
         result = await sender.send(
             to="user@example.com",
             subject="Hello",

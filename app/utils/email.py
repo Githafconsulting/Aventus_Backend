@@ -1,158 +1,83 @@
 """
 Email sending utilities.
 
-All email functions use Jinja2 templates from app/templates/email/.
+All emails are sent via AWS Lambda (which uses SES templates),
+except send_quote_sheet_pdf_email which sends directly via SES with a PDF attachment.
 """
-import resend
-from pathlib import Path
+import json
+import boto3
 from datetime import datetime
 from typing import Optional
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.config import settings
 
-# Initialize Jinja2 template engine
-_template_dir = Path(__file__).parent.parent / "templates"
-_env = Environment(
-    loader=FileSystemLoader(_template_dir),
-    autoescape=select_autoescape(["html", "xml"]),
-    trim_blocks=True,
-    lstrip_blocks=True,
-)
+# Module-level cached boto3 clients (created once, reused)
+_lambda_client = None
+_ses_client = None
 
 
-def _render_template(template_name: str, **context) -> str:
-    """Render an email template with context."""
-    template = _env.get_template(f"email/{template_name}.html")
-    default_context = {
-        "company_name": settings.company_name,
-        "logo_url": settings.logo_url,
-        "frontend_url": settings.frontend_url,
-        "support_email": getattr(settings, 'support_email', 'support@aventushr.com'),
-        "current_year": datetime.now().year,
-    }
-    default_context.update(context)
-    return template.render(**default_context)
+def _get_lambda_client():
+    """Get or create cached Lambda client."""
+    global _lambda_client
+    if _lambda_client is None:
+        _lambda_client = boto3.client(
+            "lambda",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
+    return _lambda_client
 
 
-def _send_email(to: str, subject: str, html: str) -> bool:
-    """Send email via Resend."""
-    import os
-    from dotenv import load_dotenv
-
-    # Force reload environment variables
-    load_dotenv(override=True)
-
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("FROM_EMAIL")
-
-    if not api_key:
-        print("[EMAIL] ERROR: RESEND_API_KEY not set")
-        return False
-
-    try:
-        resend.api_key = api_key
-
-        params = {
-            "from": from_email,
-            "to": [to] if isinstance(to, str) else to,
-            "subject": subject,
-            "html": html,
-        }
-
-        resend.Emails.send(params)
-        return True
-    except Exception as e:
-        print(f"[EMAIL] ERROR: {str(e)}")
-        return False
+def _get_ses_client():
+    """Get or create cached SES client."""
+    global _ses_client
+    if _ses_client is None:
+        _ses_client = boto3.client(
+            "ses",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
+    return _ses_client
 
 
-def _send_email_with_attachment(to: str, subject: str, html: str, attachment_content: bytes, attachment_filename: str) -> bool:
-    """Send email via Resend with PDF attachment."""
-    import os
-    import base64
-    from dotenv import load_dotenv
-
-    # Force reload environment variables
-    load_dotenv(override=True)
-
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("FROM_EMAIL")
-
-    if not api_key:
-        print("[EMAIL] ERROR: RESEND_API_KEY not set")
-        return False
-
-    try:
-        resend.api_key = api_key
-
-        params = {
-            "from": from_email,
-            "to": [to] if isinstance(to, str) else to,
-            "subject": subject,
-            "html": html,
-            "attachments": [
-                {
-                    "filename": attachment_filename,
-                    "content": base64.b64encode(attachment_content).decode('utf-8'),
-                }
-            ]
-        }
-
-        resend.Emails.send(params)
-        return True
-    except Exception as e:
-        print(f"[EMAIL] ERROR sending with attachment: {str(e)}")
-        return False
-
-
-def send_email_with_attachments(to_email: str, subject: str, body: str, attachments: list) -> bool:
+def _invoke_email_lambda(email_type: str, recipient: str, data: dict, cc: Optional[str] = None) -> bool:
     """
-    Send email with multiple attachments.
+    Invoke the AWS Lambda function to send an email.
 
     Args:
-        to_email: Recipient email address
-        subject: Email subject
-        body: HTML body content
-        attachments: List of dicts with 'filename', 'content' (bytes), and 'content_type'
+        email_type: The template type (e.g. "activation", "contract_signing")
+        recipient: Recipient email address
+        data: Template data dict
+        cc: Optional CC email address
+
+    Returns:
+        True if invocation succeeded, False otherwise
     """
-    import os
-    import base64
-    from dotenv import load_dotenv
-
-    load_dotenv(override=True)
-
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("FROM_EMAIL")
-
-    if not api_key:
-        print("[EMAIL] ERROR: RESEND_API_KEY not set")
+    if not settings.email_lambda_function_name:
+        print("[EMAIL] ERROR: EMAIL_LAMBDA_FUNCTION_NAME not set")
         return False
 
     try:
-        resend.api_key = api_key
-
-        # Format attachments for Resend
-        formatted_attachments = []
-        for att in attachments:
-            formatted_attachments.append({
-                "filename": att["filename"],
-                "content": base64.b64encode(att["content"]).decode('utf-8'),
-            })
-
-        params = {
-            "from": from_email,
-            "to": [to_email] if isinstance(to_email, str) else to_email,
-            "subject": subject,
-            "html": body,
-            "attachments": formatted_attachments
+        payload = {
+            "email_type": email_type,
+            "recipient": recipient,
+            "data": data,
         }
+        if cc:
+            payload["cc"] = cc
 
-        resend.Emails.send(params)
-        print(f"[EMAIL] Sent to {to_email} with {len(attachments)} attachment(s): {subject}")
+        client = _get_lambda_client()
+        client.invoke(
+            FunctionName=settings.email_lambda_function_name,
+            InvocationType="Event",  # Async fire-and-forget
+            Payload=json.dumps(payload).encode("utf-8"),
+        )
+        print(f"[EMAIL] Lambda invoked: {email_type} -> {recipient}")
         return True
     except Exception as e:
-        print(f"[EMAIL] ERROR sending with attachments: {str(e)}")
+        print(f"[EMAIL] ERROR invoking Lambda ({email_type}): {e}")
         return False
 
 
@@ -167,13 +92,11 @@ def send_contract_email(
     expiry_date: datetime
 ) -> bool:
     """Send contract signing email to contractor."""
-    html = _render_template(
-        "contract_signing",
-        contractor_name=contractor_name,
-        contract_link=f"{settings.contract_signing_url}?token={contract_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    )
-    return _send_email(contractor_email, "Your Employment Contract - Action Required", html)
+    return _invoke_email_lambda("contract_signing", contractor_email, {
+        "contractor_name": contractor_name,
+        "contract_link": f"{settings.contract_signing_url}?token={contract_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    })
 
 
 def send_activation_email(
@@ -182,14 +105,12 @@ def send_activation_email(
     temporary_password: str
 ) -> bool:
     """Send account activation email with login credentials."""
-    html = _render_template(
-        "activation",
-        contractor_name=contractor_name,
-        contractor_email=contractor_email,
-        temporary_password=temporary_password,
-        login_link=settings.frontend_url,
-    )
-    return _send_email(contractor_email, f"Welcome to {settings.company_name} - Your Account is Ready", html)
+    return _invoke_email_lambda("activation", contractor_email, {
+        "contractor_name": contractor_name,
+        "contractor_email": contractor_email,
+        "temporary_password": temporary_password,
+        "login_link": settings.frontend_url,
+    })
 
 
 def send_signed_contract_email(
@@ -198,13 +119,11 @@ def send_signed_contract_email(
     pdf_url: str
 ) -> bool:
     """Send signed contract copy to contractor."""
-    html = _render_template(
-        "signed_contract",
-        contractor_name=contractor_name,
-        pdf_url=pdf_url,
-        login_link=settings.frontend_url,
-    )
-    return _send_email(contractor_email, f"Your Signed Contract - {settings.company_name}", html)
+    return _invoke_email_lambda("signed_contract", contractor_email, {
+        "contractor_name": contractor_name,
+        "pdf_url": pdf_url,
+        "login_link": settings.frontend_url,
+    })
 
 
 def send_document_upload_email(
@@ -214,13 +133,11 @@ def send_document_upload_email(
     expiry_date: datetime
 ) -> bool:
     """Send document upload request email."""
-    html = _render_template(
-        "document_upload",
-        contractor_name=contractor_name,
-        upload_link=f"{settings.frontend_url}/documents/upload/{upload_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    )
-    return _send_email(contractor_email, "Document Upload Required - Action Needed", html)
+    return _invoke_email_lambda("document_upload", contractor_email, {
+        "contractor_name": contractor_name,
+        "upload_link": f"{settings.frontend_url}/documents/upload/{upload_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    })
 
 
 def send_documents_uploaded_notification(
@@ -229,12 +146,10 @@ def send_documents_uploaded_notification(
     contractor_id: int
 ) -> bool:
     """Notify admin that contractor has uploaded documents."""
-    html = _render_template(
-        "documents_uploaded",
-        contractor_name=contractor_name,
-        review_link=f"{settings.frontend_url}/admin/contractors/{contractor_id}",
-    )
-    return _send_email(admin_email, f"Documents Uploaded - {contractor_name}", html)
+    return _invoke_email_lambda("documents_uploaded", admin_email, {
+        "contractor_name": contractor_name,
+        "review_link": f"{settings.frontend_url}/admin/contractors/{contractor_id}",
+    })
 
 
 # =============================================================================
@@ -248,13 +163,11 @@ def send_password_reset_email(
     expiry_date: datetime
 ) -> bool:
     """Send password reset email."""
-    html = _render_template(
-        "password_reset",
-        name=name,
-        reset_link=f"{settings.password_reset_url}?token={reset_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    )
-    return _send_email(email, f"Password Reset Request - {settings.company_name}", html)
+    return _invoke_email_lambda("password_reset", email, {
+        "name": name,
+        "reset_link": f"{settings.password_reset_url}?token={reset_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    })
 
 
 # =============================================================================
@@ -268,13 +181,11 @@ def send_review_notification(
     notification_type: str = "Review"
 ) -> bool:
     """Send review notification to admin."""
-    html = _render_template(
-        "review_notification",
-        contractor_name=contractor_name,
-        notification_type=notification_type,
-        review_link=f"{settings.frontend_url}/admin/contractors/{contractor_id}",
-    )
-    return _send_email(admin_email, f"Review Required: {notification_type} - {contractor_name}", html)
+    return _invoke_email_lambda("review_notification", admin_email, {
+        "contractor_name": contractor_name,
+        "notification_type": notification_type,
+        "review_link": f"{settings.frontend_url}/admin/contractors/{contractor_id}",
+    })
 
 
 # =============================================================================
@@ -292,16 +203,17 @@ def send_quote_sheet_request_email(
     custom_message: Optional[str] = None
 ) -> bool:
     """Send quote sheet request to third party."""
-    html = _render_template(
-        "quote_sheet_request",
-        third_party_name=third_party_name,
-        contractor_name=contractor_name,
-        quote_link=f"{settings.frontend_url}/quote-sheet/{quote_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        custom_message=custom_message,
-    )
-    subject = custom_subject or f"Quote Sheet Required - {contractor_name}"
-    return _send_email(third_party_email, subject, html)
+    data = {
+        "third_party_name": third_party_name,
+        "contractor_name": contractor_name,
+        "quote_link": f"{settings.frontend_url}/quote-sheet/{quote_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if custom_message:
+        data["custom_message"] = custom_message
+    if custom_subject:
+        data["subject"] = custom_subject
+    return _invoke_email_lambda("quote_sheet_request", third_party_email, data, cc=cc_email)
 
 
 def send_cohf_email(
@@ -313,15 +225,15 @@ def send_cohf_email(
     custom_message: Optional[str] = None
 ) -> bool:
     """Send COHF signature request to third party."""
-    html = _render_template(
-        "cohf",
-        third_party_name=third_party_name,
-        contractor_name=contractor_name,
-        signing_link=f"{settings.frontend_url}/cohf/sign/{cohf_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        custom_message=custom_message,
-    )
-    return _send_email(third_party_email, f"COHF Signature Required - {contractor_name}", html)
+    data = {
+        "third_party_name": third_party_name,
+        "contractor_name": contractor_name,
+        "signing_link": f"{settings.frontend_url}/cohf/sign/{cohf_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if custom_message:
+        data["custom_message"] = custom_message
+    return _invoke_email_lambda("cohf", third_party_email, data)
 
 
 # =============================================================================
@@ -337,15 +249,15 @@ def send_work_order_email(
     client_name: Optional[str] = None
 ) -> bool:
     """Send work order notification."""
-    html = _render_template(
-        "work_order",
-        recipient_name=recipient_name,
-        contractor_name=contractor_name,
-        work_order_link=f"{settings.frontend_url}/work-order/{work_order_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        client_name=client_name,
-    )
-    return _send_email(recipient_email, f"Work Order - {contractor_name}", html)
+    data = {
+        "recipient_name": recipient_name,
+        "contractor_name": contractor_name,
+        "work_order_link": f"{settings.frontend_url}/work-order/{work_order_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if client_name:
+        data["client_name"] = client_name
+    return _invoke_email_lambda("work_order", recipient_email, data)
 
 
 def send_work_order_to_client(
@@ -356,14 +268,12 @@ def send_work_order_to_client(
     expiry_date: datetime
 ) -> bool:
     """Send work order signing request to client."""
-    html = _render_template(
-        "work_order_client",
-        client_name=client_name,
-        contractor_name=contractor_name,
-        signing_link=f"{settings.frontend_url}/sign-work-order/{work_order_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    )
-    return _send_email(client_email, f"Work Order Signature Required - {contractor_name}", html)
+    return _invoke_email_lambda("work_order_client", client_email, {
+        "client_name": client_name,
+        "contractor_name": contractor_name,
+        "signing_link": f"{settings.frontend_url}/sign-work-order/{work_order_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    })
 
 
 # =============================================================================
@@ -379,15 +289,15 @@ def send_proposal_email(
     contractor_name: Optional[str] = None
 ) -> bool:
     """Send proposal email."""
-    html = _render_template(
-        "proposal",
-        recipient_name=recipient_name,
-        proposal_title=proposal_title,
-        proposal_link=f"{settings.frontend_url}/proposal/{proposal_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        contractor_name=contractor_name,
-    )
-    return _send_email(recipient_email, f"Proposal: {proposal_title}", html)
+    data = {
+        "recipient_name": recipient_name,
+        "proposal_title": proposal_title,
+        "proposal_link": f"{settings.frontend_url}/proposal/{proposal_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if contractor_name:
+        data["contractor_name"] = contractor_name
+    return _invoke_email_lambda("proposal", recipient_email, data)
 
 
 # =============================================================================
@@ -405,17 +315,19 @@ def send_third_party_contractor_request(
     custom_message: Optional[str] = None
 ) -> bool:
     """Send contractor request to third party."""
-    html = _render_template(
-        "third_party_request",
-        third_party_name=third_party_name,
-        contractor_name=contractor_name,
-        action_link=f"{settings.frontend_url}/third-party/request/{action_token}",
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        role=role,
-        client_name=client_name,
-        custom_message=custom_message,
-    )
-    return _send_email(third_party_email, f"New Contractor Request - {contractor_name}", html)
+    data = {
+        "third_party_name": third_party_name,
+        "contractor_name": contractor_name,
+        "action_link": f"{settings.frontend_url}/third-party/request/{action_token}",
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if role:
+        data["role"] = role
+    if client_name:
+        data["client_name"] = client_name
+    if custom_message:
+        data["custom_message"] = custom_message
+    return _invoke_email_lambda("third_party_request", third_party_email, data)
 
 
 # =============================================================================
@@ -436,19 +348,19 @@ def send_timesheet_to_manager(
     client_name: Optional[str] = None
 ) -> bool:
     """Send timesheet notification to manager for approval."""
-    html = _render_template(
-        "timesheet",
-        manager_name=manager_name,
-        contractor_name=contractor_name,
-        timesheet_link=review_link,
-        period=timesheet_month,
-        total_days=total_days,
-        work_days=work_days,
-        sick_days=sick_days,
-        vacation_days=vacation_days,
-        client_name=client_name,
-    )
-    return _send_email(manager_email, f"Timesheet Submitted - {contractor_name} ({timesheet_month})", html)
+    data = {
+        "manager_name": manager_name,
+        "contractor_name": contractor_name,
+        "timesheet_link": review_link,
+        "period": timesheet_month,
+        "total_days": total_days,
+        "work_days": work_days,
+        "sick_days": sick_days,
+        "vacation_days": vacation_days,
+    }
+    if client_name:
+        data["client_name"] = client_name
+    return _invoke_email_lambda("timesheet", manager_email, data)
 
 
 def send_uploaded_timesheet_to_manager(
@@ -461,16 +373,18 @@ def send_uploaded_timesheet_to_manager(
     client_name: Optional[str] = None
 ) -> bool:
     """Send notification when timesheet document is uploaded."""
-    html = _render_template(
-        "timesheet_uploaded",
-        manager_name=manager_name,
-        contractor_name=contractor_name,
-        review_link=review_link,
-        filename=filename,
-        period=period,
-        client_name=client_name,
-    )
-    return _send_email(manager_email, f"Timesheet Uploaded - {contractor_name}", html)
+    data = {
+        "manager_name": manager_name,
+        "contractor_name": contractor_name,
+        "review_link": review_link,
+    }
+    if filename:
+        data["filename"] = filename
+    if period:
+        data["period"] = period
+    if client_name:
+        data["client_name"] = client_name
+    return _invoke_email_lambda("timesheet_uploaded", manager_email, data)
 
 
 # =============================================================================
@@ -487,18 +401,15 @@ def send_quote_sheet_request(
     email_cc: Optional[str] = None
 ) -> bool:
     """Send quote sheet request to third party for Saudi route."""
-    html = _render_template(
-        "quote_sheet_request",
-        third_party_name=third_party_name,
-        contractor_name=contractor_name,
-        quote_link=upload_url,
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    )
-    subject = email_subject or f"Quote Sheet Request - {contractor_name}"
-
-    if email_cc:
-        return _send_email_with_cc(third_party_email, email_cc, subject, html)
-    return _send_email(third_party_email, subject, html)
+    data = {
+        "third_party_name": third_party_name,
+        "contractor_name": contractor_name,
+        "quote_link": upload_url,
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if email_subject:
+        data["subject"] = email_subject
+    return _invoke_email_lambda("quote_sheet_request", third_party_email, data, cc=email_cc)
 
 
 def send_quote_sheet_form_link(
@@ -512,18 +423,19 @@ def send_quote_sheet_form_link(
     client_name: Optional[str] = None
 ) -> bool:
     """Send quote sheet form link to third party to fill and submit."""
-    html = _render_template(
-        "quote_sheet_form_link",
-        third_party_name=third_party_name,
-        contractor_name=contractor_name,
-        form_link=form_link,
-        expiry_date=expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-        role=role,
-        location=location,
-        client_name=client_name,
-    )
-    subject = f"Cost Estimation Sheet - Action Required - {contractor_name}"
-    return _send_email(third_party_email, subject, html)
+    data = {
+        "third_party_name": third_party_name,
+        "contractor_name": contractor_name,
+        "form_link": form_link,
+        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+    }
+    if role:
+        data["role"] = role
+    if location:
+        data["location"] = location
+    if client_name:
+        data["client_name"] = client_name
+    return _invoke_email_lambda("quote_sheet_form_link", third_party_email, data)
 
 
 def send_quote_sheet_pdf_email(
@@ -534,55 +446,57 @@ def send_quote_sheet_pdf_email(
     pdf_filename: str,
     company_name: str = "Aventus"
 ) -> bool:
-    """Send quote sheet PDF to third party via email."""
-    html = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <h2 style="color: #9B1B1B;">Cost Estimation Sheet</h2>
-            <p>Dear {third_party_name or 'Team'},</p>
-            <p>Please find attached the Cost Estimation Sheet for <strong>{contractor_name}</strong>.</p>
-            <p>This document contains the detailed cost breakdown for your review.</p>
-            <p>If you have any questions or require clarification, please don't hesitate to contact us.</p>
-            <br/>
-            <p>Best regards,</p>
-            <p><strong>{company_name} Team</strong></p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;"/>
-            <p style="font-size: 12px; color: #666;">This is an automated email. Please do not reply directly to this message.</p>
-        </div>
-    </body>
-    </html>
     """
-    subject = f"Cost Estimation Sheet - {contractor_name}"
-    return _send_email_with_attachment(third_party_email, subject, html, pdf_content, pdf_filename)
+    Send quote sheet PDF to third party via email.
 
-
-def _send_email_with_cc(to: str, cc: str, subject: str, html: str) -> bool:
-    """Send email via Resend with CC."""
-    import os
-    from dotenv import load_dotenv
-
-    load_dotenv(override=True)
-
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("FROM_EMAIL")
-
-    if not api_key:
-        print("[EMAIL] ERROR: RESEND_API_KEY not set")
-        return False
-
-    resend.api_key = api_key
+    This is the special case: no Lambda template exists for this email.
+    Sends directly via SES with a MIME attachment.
+    """
+    import base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
 
     try:
-        resend.Emails.send({
-            "from": from_email or "Aventus HR <noreply@aventushr.com>",
-            "to": to,
-            "cc": cc,
-            "subject": subject,
-            "html": html,
-        })
-        print(f"[EMAIL] Sent to {to} (CC: {cc}): {subject}")
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = f"Cost Estimation Sheet - {contractor_name}"
+        msg["From"] = settings.from_email
+        msg["To"] = third_party_email
+
+        html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #9B1B1B;">Cost Estimation Sheet</h2>
+                <p>Dear {third_party_name or 'Team'},</p>
+                <p>Please find attached the Cost Estimation Sheet for <strong>{contractor_name}</strong>.</p>
+                <p>This document contains the detailed cost breakdown for your review.</p>
+                <p>If you have any questions or require clarification, please don't hesitate to contact us.</p>
+                <br/>
+                <p>Best regards,</p>
+                <p><strong>{company_name} Team</strong></p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;"/>
+                <p style="font-size: 12px; color: #666;">This is an automated email. Please do not reply directly to this message.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        body_part = MIMEText(html, "html")
+        msg.attach(body_part)
+
+        att = MIMEApplication(pdf_content)
+        att.add_header("Content-Disposition", "attachment", filename=pdf_filename)
+        msg.attach(att)
+
+        client = _get_ses_client()
+        client.send_raw_email(
+            Source=settings.from_email,
+            Destinations=[third_party_email],
+            RawMessage={"Data": msg.as_string()},
+        )
+        print(f"[EMAIL] SES raw email sent: quote_sheet_pdf -> {third_party_email}")
         return True
     except Exception as e:
-        print(f"[EMAIL] ERROR sending to {to}: {e}")
+        print(f"[EMAIL] ERROR sending quote sheet PDF via SES: {e}")
         return False

@@ -16,8 +16,7 @@ from app.models.client import Client
 from app.repositories.implementations.invoice_repo import InvoiceRepository, InvoicePaymentRepository
 from app.utils.payroll_pdf import generate_invoice_pdf
 from app.utils.storage import upload_file
-from app.adapters.email.interface import IEmailSender, EmailAttachment
-from app.adapters.email.template_engine import EmailTemplateEngine
+from app.utils.email import _invoke_email_lambda
 from app.config.settings import settings
 from app.telemetry.logger import get_logger
 
@@ -36,14 +35,12 @@ class InvoiceService:
         invoice_repo: InvoiceRepository,
         payment_repo: InvoicePaymentRepository,
         db: Session,
-        email_sender: Optional[IEmailSender] = None,
-        template_engine: Optional[EmailTemplateEngine] = None,
+        email_sender=None,
+        template_engine=None,
     ):
         self.repo = invoice_repo
         self.payment_repo = payment_repo
         self.db = db
-        self.email = email_sender
-        self.templates = template_engine
 
     async def generate_invoice(
         self,
@@ -170,7 +167,7 @@ class InvoiceService:
 
     async def send_invoice(self, invoice_id: int) -> bool:
         """
-        Send invoice email to client.
+        Send invoice email to client via Lambda.
 
         Args:
             invoice_id: ID of the invoice
@@ -178,9 +175,6 @@ class InvoiceService:
         Returns:
             True if sent successfully
         """
-        if not self.email or not self.templates:
-            raise ValueError("Email sender not configured")
-
         invoice = await self.repo.get(invoice_id)
         if not invoice:
             raise ValueError(f"Invoice {invoice_id} not found")
@@ -196,51 +190,29 @@ class InvoiceService:
         if not client or not contractor:
             raise ValueError("Related records not found")
 
-        # Get client email
         client_email = client.contact_person_email
         if not client_email:
             raise ValueError("Client does not have a contact email")
 
-        # Get PDF content
         payroll = self.db.query(Payroll).filter(
             Payroll.id == invoice.payroll_id
         ).first()
 
-        pdf_buffer = generate_invoice_pdf(payroll, contractor)
-        pdf_content = pdf_buffer.read()
-
-        # Portal link
         portal_link = f"{settings.frontend_url}/invoice/{invoice.access_token}"
-
-        # Render email template
         contractor_name = f"{contractor.first_name} {contractor.surname}"
-        html = self.templates.render(
-            "invoice",
-            client_name=client.company_name,
-            invoice_number=invoice.invoice_number,
-            contractor_name=contractor_name,
-            period=invoice.payroll.period if invoice.payroll else "",
-            total_amount=invoice.total_amount,
-            currency=payroll.currency if payroll else "AED",
-            due_date=invoice.due_date.strftime("%B %d, %Y"),
-            portal_link=portal_link,
-        )
 
-        # Send with attachment
-        attachment = EmailAttachment(
-            filename=f"{invoice.invoice_number}.pdf",
-            content=pdf_content,
-            content_type="application/pdf",
-        )
+        success = _invoke_email_lambda("invoice", client_email, {
+            "client_name": client.company_name,
+            "invoice_number": invoice.invoice_number,
+            "contractor_name": contractor_name,
+            "period": payroll.period if payroll else "",
+            "total_amount": invoice.total_amount,
+            "currency": payroll.currency if payroll else "AED",
+            "due_date": invoice.due_date.strftime("%B %d, %Y"),
+            "portal_link": portal_link,
+        })
 
-        result = await self.email.send(
-            to=client_email,
-            subject=f"Invoice {invoice.invoice_number} - {contractor_name}",
-            html=html,
-            attachments=[attachment],
-        )
-
-        if result.success:
+        if success:
             invoice.status = InvoiceStatus.SENT
             invoice.sent_at = datetime.utcnow()
             self.db.commit()
@@ -253,7 +225,7 @@ class InvoiceService:
                 }
             )
 
-        return result.success
+        return success
 
     async def send_bulk(self, invoice_ids: List[int]) -> Dict[str, List]:
         """Bulk send invoices."""
@@ -356,10 +328,7 @@ class InvoiceService:
         return overdue
 
     async def send_overdue_reminder(self, invoice_id: int) -> bool:
-        """Send overdue reminder email."""
-        if not self.email or not self.templates:
-            raise ValueError("Email sender not configured")
-
+        """Send overdue reminder email via Lambda."""
         invoice = await self.repo.get(invoice_id)
         if not invoice:
             raise ValueError(f"Invoice {invoice_id} not found")
@@ -383,32 +352,20 @@ class InvoiceService:
             Payroll.id == invoice.payroll_id
         ).first()
 
-        # Calculate days overdue
         days_overdue = (date.today() - invoice.due_date).days
-
-        # Portal link
         portal_link = f"{settings.frontend_url}/invoice/{invoice.access_token}"
-
         contractor_name = f"{contractor.first_name} {contractor.surname}"
-        html = self.templates.render(
-            "invoice_overdue",
-            client_name=client.company_name,
-            invoice_number=invoice.invoice_number,
-            contractor_name=contractor_name,
-            balance=invoice.balance,
-            currency=payroll.currency if payroll else "AED",
-            due_date=invoice.due_date.strftime("%B %d, %Y"),
-            days_overdue=days_overdue,
-            portal_link=portal_link,
-        )
 
-        result = await self.email.send(
-            to=client_email,
-            subject=f"OVERDUE: Invoice {invoice.invoice_number} - Payment Required",
-            html=html,
-        )
-
-        return result.success
+        return _invoke_email_lambda("invoice_overdue", client_email, {
+            "client_name": client.company_name,
+            "invoice_number": invoice.invoice_number,
+            "contractor_name": contractor_name,
+            "balance": invoice.balance,
+            "currency": payroll.currency if payroll else "AED",
+            "due_date": invoice.due_date.strftime("%B %d, %Y"),
+            "days_overdue": days_overdue,
+            "portal_link": portal_link,
+        })
 
     async def mark_viewed(self, invoice_id: int) -> Invoice:
         """Mark invoice as viewed (from portal access)."""

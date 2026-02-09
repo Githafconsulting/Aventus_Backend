@@ -28,8 +28,6 @@ from app.schemas.invoice import (
 )
 from app.repositories.implementations.invoice_repo import InvoiceRepository, InvoicePaymentRepository
 from app.services.invoice_service import InvoiceService
-from app.adapters.email.resend_adapter import ResendEmailSender
-from app.adapters.email.template_engine import get_email_template_engine
 from app.utils.auth import get_current_active_user
 from app.models.user import User
 from app.utils.payroll_pdf import generate_invoice_pdf
@@ -99,9 +97,7 @@ def get_invoice_service(db: Session = Depends(get_db)) -> InvoiceService:
     """Get invoice service instance."""
     invoice_repo = InvoiceRepository(db)
     payment_repo = InvoicePaymentRepository(db)
-    email_sender = ResendEmailSender()
-    template_engine = get_email_template_engine()
-    return InvoiceService(invoice_repo, payment_repo, db, email_sender, template_engine)
+    return InvoiceService(invoice_repo, payment_repo, db)
 
 
 @router.get("/", response_model=List[InvoiceListResponse])

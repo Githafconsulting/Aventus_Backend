@@ -10,22 +10,27 @@ class TestEmailUtilFunctions:
     """Tests for email utility functions in app/utils/email.py."""
 
     @pytest.fixture
-    def mock_resend(self):
-        """Mock resend module."""
-        with patch("app.utils.email.resend") as mock:
-            mock.Emails.send = MagicMock(return_value={"id": "msg-123"})
-            yield mock
+    def mock_lambda_client(self):
+        """Mock boto3 Lambda client."""
+        with patch("app.utils.email._get_lambda_client") as mock:
+            client = MagicMock()
+            client.invoke = MagicMock(return_value={"StatusCode": 202})
+            mock.return_value = client
+            yield client
 
     @pytest.fixture
-    def mock_template_env(self):
-        """Mock template environment."""
-        with patch("app.utils.email._env") as mock:
-            template = MagicMock()
-            template.render = MagicMock(return_value="<html>Test</html>")
-            mock.get_template = MagicMock(return_value=template)
+    def mock_settings(self):
+        """Mock settings with Lambda function name."""
+        with patch("app.utils.email.settings") as mock:
+            mock.email_lambda_function_name = "test-email-lambda"
+            mock.frontend_url = "http://localhost:3000"
+            mock.contract_signing_url = "http://localhost:3000/contract/sign"
+            mock.password_reset_url = "http://localhost:3000/reset-password"
+            mock.company_name = "Aventus HR"
+            mock.from_email = "noreply@aventushr.com"
             yield mock
 
-    def test_send_contract_email(self, mock_resend, mock_template_env):
+    def test_send_contract_email(self, mock_lambda_client, mock_settings):
         """Test send_contract_email function."""
         from app.utils.email import send_contract_email
 
@@ -37,9 +42,9 @@ class TestEmailUtilFunctions:
         )
 
         assert result is True
-        mock_resend.Emails.send.assert_called_once()
+        mock_lambda_client.invoke.assert_called_once()
 
-    def test_send_activation_email(self, mock_resend, mock_template_env):
+    def test_send_activation_email(self, mock_lambda_client, mock_settings):
         """Test send_activation_email function."""
         from app.utils.email import send_activation_email
 
@@ -51,7 +56,7 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_document_upload_email(self, mock_resend, mock_template_env):
+    def test_send_document_upload_email(self, mock_lambda_client, mock_settings):
         """Test send_document_upload_email function."""
         from app.utils.email import send_document_upload_email
 
@@ -64,7 +69,7 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_password_reset_email(self, mock_resend, mock_template_env):
+    def test_send_password_reset_email(self, mock_lambda_client, mock_settings):
         """Test send_password_reset_email function."""
         from app.utils.email import send_password_reset_email
 
@@ -77,7 +82,7 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_cohf_email(self, mock_resend, mock_template_env):
+    def test_send_cohf_email(self, mock_lambda_client, mock_settings):
         """Test send_cohf_email function."""
         from app.utils.email import send_cohf_email
 
@@ -91,7 +96,7 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_quote_sheet_request_email(self, mock_resend, mock_template_env):
+    def test_send_quote_sheet_request_email(self, mock_lambda_client, mock_settings):
         """Test send_quote_sheet_request_email function."""
         from app.utils.email import send_quote_sheet_request_email
 
@@ -105,7 +110,7 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_work_order_to_client(self, mock_resend, mock_template_env):
+    def test_send_work_order_to_client(self, mock_lambda_client, mock_settings):
         """Test send_work_order_to_client function."""
         from app.utils.email import send_work_order_to_client
 
@@ -119,10 +124,12 @@ class TestEmailUtilFunctions:
 
         assert result is True
 
-    def test_send_email_failure(self, mock_template_env):
-        """Test email sending failure."""
-        with patch("app.utils.email.resend") as mock_resend:
-            mock_resend.Emails.send = MagicMock(side_effect=Exception("Connection failed"))
+    def test_send_email_failure(self, mock_settings):
+        """Test email sending failure when Lambda invocation fails."""
+        with patch("app.utils.email._get_lambda_client") as mock:
+            client = MagicMock()
+            client.invoke = MagicMock(side_effect=Exception("Connection failed"))
+            mock.return_value = client
 
             from app.utils.email import send_contract_email
 
@@ -135,21 +142,20 @@ class TestEmailUtilFunctions:
 
             assert result is False
 
+    def test_missing_lambda_function_name(self):
+        """Test that missing Lambda function name returns False."""
+        with patch("app.utils.email.settings") as mock_settings:
+            mock_settings.email_lambda_function_name = ""
+            mock_settings.frontend_url = "http://localhost:3000"
+            mock_settings.contract_signing_url = "http://localhost:3000/contract/sign"
 
-class TestRenderTemplate:
-    """Tests for _render_template function."""
+            from app.utils.email import send_contract_email
 
-    def test_render_template_includes_defaults(self):
-        """Test that render includes default context."""
-        from app.utils.email import _render_template
+            result = send_contract_email(
+                contractor_email="test@example.com",
+                contractor_name="John Doe",
+                contract_token="test-token",
+                expiry_date=datetime.utcnow() + timedelta(hours=48),
+            )
 
-        # This should not raise an error
-        html = _render_template(
-            "document_upload",
-            contractor_name="John",
-            upload_link="https://example.com/upload",
-            expiry_date="Jan 15, 2025",
-        )
-
-        assert html is not None
-        assert "John" in html
+            assert result is False

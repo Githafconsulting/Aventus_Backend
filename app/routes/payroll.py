@@ -153,78 +153,30 @@ def _get_calendar_days_in_month(period: str) -> int:
         return 30  # Default fallback
 
 
-def _build_email_table_html(rows: list[tuple[str, str]], highlight_last: bool = True) -> str:
-    """
-    Build HTML table for email body.
-    Each row is a tuple of (label, value).
-    """
-    html_rows = []
-    for i, (label, value) in enumerate(rows):
-        is_last = i == len(rows) - 1
-        style = 'style="background-color: #f9f9f9;"' if highlight_last and is_last else ''
-        value_html = f"<strong>{value}</strong>" if highlight_last and is_last else value
-        html_rows.append(f"""
-                    <tr {style}>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{label}:</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{value_html}</td>
-                    </tr>""")
-    return "".join(html_rows)
-
-
 def _send_invoice_to_client(
     contractor: Contractor,
     contractor_name: str,
     payroll: Payroll,
     invoice_bytes: bytes
 ) -> bool:
-    """Send invoice email to client. Returns True if successful."""
-    # Use invoice_email1 as primary, fallback to invoice_email
+    """Send invoice email to client via Lambda. Returns True if successful."""
+    from app.utils.email import _invoke_email_lambda
+
     client_email = contractor.invoice_email1 or contractor.invoice_email
     if not client_email:
         return False
 
     try:
-        from app.utils.email import send_email_with_attachments
-
-        # Handle None values safely
-        invoice_total = payroll.invoice_total or 0
-        vat_amount = payroll.vat_amount or 0
-        total_payable = payroll.total_payable or 0
-        vat_rate = payroll.vat_rate or 0
-
-        table_rows = [
-            ("Contractor", contractor_name),
-            ("Period", payroll.period),
-            ("Invoice Total", f"{payroll.currency} {invoice_total:,.2f}"),
-            (f"VAT ({int(vat_rate * 100)}%)", f"{payroll.currency} {vat_amount:,.2f}"),
-            ("Total Payable", f"{payroll.currency} {total_payable:,.2f}"),
-        ]
-
-        client_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px;">
-                <h2 style="color: #FF6B00;">Invoice for {contractor_name}</h2>
-                <p>Dear {contractor.client_name or 'Client'},</p>
-                <p>Please find attached the invoice for {contractor_name} for the period of {payroll.period}.</p>
-                <table style="margin: 20px 0; border-collapse: collapse;">
-                    {_build_email_table_html(table_rows)}
-                </table>
-                <p>Please review the attached invoice and process payment at your earliest convenience.</p>
-                <p>Best regards,<br>Aventus Consultants</p>
-            </body>
-            </html>
-            """
-
-        send_email_with_attachments(
-            to_email=client_email,
-            subject=f"Invoice - {contractor_name} - {payroll.period}",
-            body=client_body,
-            attachments=[{
-                "filename": f"Invoice_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
-                "content": invoice_bytes,
-                "content_type": "application/pdf"
-            }]
-        )
+        _invoke_email_lambda("invoice", client_email, {
+            "client_name": contractor.client_name or "Client",
+            "contractor_name": contractor_name,
+            "period": payroll.period,
+            "invoice_total": payroll.invoice_total or 0,
+            "vat_rate": payroll.vat_rate or 0,
+            "vat_amount": payroll.vat_amount or 0,
+            "total_payable": payroll.total_payable or 0,
+            "currency": payroll.currency,
+        })
         print(f"[INFO] Invoice email sent to client: {client_email}")
         return True
     except Exception as e:
@@ -238,50 +190,21 @@ def _send_payslip_to_contractor(
     payroll: Payroll,
     payslip_bytes: bytes
 ) -> bool:
-    """Send payslip email to contractor. Returns True if successful."""
+    """Send payslip email to contractor via Lambda. Returns True if successful."""
+    from app.utils.email import _invoke_email_lambda
+
     if not contractor.email:
         return False
 
     try:
-        from app.utils.email import send_email_with_attachments
-
-        # Handle None values safely
-        gross_pay = payroll.gross_pay or 0
-        net_salary = payroll.net_salary or 0
-        days_worked = payroll.days_worked or 0
-
-        table_rows = [
-            ("Period", payroll.period),
-            ("Days Worked", str(days_worked)),
-            ("Gross Pay", f"{payroll.currency} {gross_pay:,.2f}"),
-            ("Net Salary", f"{payroll.currency} {net_salary:,.2f}"),
-        ]
-
-        contractor_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px;">
-                <h2 style="color: #FF6B00;">Your Payslip for {payroll.period}</h2>
-                <p>Dear {contractor.first_name},</p>
-                <p>Please find attached your payslip for the period of {payroll.period}.</p>
-                <table style="margin: 20px 0; border-collapse: collapse;">
-                    {_build_email_table_html(table_rows)}
-                </table>
-                <p>If you have any questions about your payslip, please contact us.</p>
-                <p>Best regards,<br>Aventus Consultants</p>
-            </body>
-            </html>
-            """
-
-        send_email_with_attachments(
-            to_email=contractor.email,
-            subject=f"Payslip - {payroll.period}",
-            body=contractor_body,
-            attachments=[{
-                "filename": f"Payslip_{contractor_name.replace(' ', '_')}_{payroll.period.replace(' ', '_')}.pdf",
-                "content": payslip_bytes,
-                "content_type": "application/pdf"
-            }]
-        )
+        _invoke_email_lambda("payslip", contractor.email, {
+            "contractor_name": contractor_name,
+            "period": payroll.period,
+            "days_worked": payroll.days_worked or 0,
+            "gross_pay": payroll.gross_pay or 0,
+            "net_salary": payroll.net_salary or 0,
+            "currency": payroll.currency,
+        })
         print(f"[INFO] Payslip email sent to contractor: {contractor.email}")
         return True
     except Exception as e:

@@ -16,8 +16,6 @@ from app.repositories.implementations.client_repo import ClientRepository
 from app.services.contractor_service import ContractorService
 from app.services.notification_service import NotificationService
 from app.services.onboarding_service import OnboardingService
-from app.adapters.email.resend_adapter import ResendEmailSender
-from app.adapters.email.template_engine import get_email_template_engine
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -111,9 +109,7 @@ def get_contractor_service(
 
 def get_notification_service() -> NotificationService:
     """Get notification service instance."""
-    email_sender = ResendEmailSender()
-    template_engine = get_email_template_engine()
-    return NotificationService(email_sender, template_engine)
+    return NotificationService()
 
 
 def get_onboarding_service(

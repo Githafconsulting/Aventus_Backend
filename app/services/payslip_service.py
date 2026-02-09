@@ -15,8 +15,7 @@ from app.models.contractor import Contractor
 from app.repositories.implementations.payslip_repo import PayslipRepository
 from app.utils.payroll_pdf import generate_payslip_pdf
 from app.utils.storage import upload_file
-from app.adapters.email.interface import IEmailSender, EmailAttachment
-from app.adapters.email.template_engine import EmailTemplateEngine
+from app.utils.email import _invoke_email_lambda
 from app.config.settings import settings
 from app.telemetry.logger import get_logger
 
@@ -34,13 +33,11 @@ class PayslipService:
         self,
         payslip_repo: PayslipRepository,
         db: Session,
-        email_sender: Optional[IEmailSender] = None,
-        template_engine: Optional[EmailTemplateEngine] = None,
+        email_sender=None,
+        template_engine=None,
     ):
         self.repo = payslip_repo
         self.db = db
-        self.email = email_sender
-        self.templates = template_engine
 
     async def generate_payslip(self, payroll_id: int) -> Payslip:
         """
@@ -148,7 +145,7 @@ class PayslipService:
 
     async def send_payslip(self, payslip_id: int) -> bool:
         """
-        Send payslip email to contractor.
+        Send payslip email to contractor via Lambda.
 
         Args:
             payslip_id: ID of the payslip
@@ -156,9 +153,6 @@ class PayslipService:
         Returns:
             True if sent successfully
         """
-        if not self.email or not self.templates:
-            raise ValueError("Email sender not configured")
-
         payslip = await self.repo.get(payslip_id)
         if not payslip:
             raise ValueError(f"Payslip {payslip_id} not found")
@@ -169,45 +163,23 @@ class PayslipService:
         if not contractor:
             raise ValueError("Contractor not found")
 
-        # Get PDF content for attachment
         payroll = self.db.query(Payroll).filter(
             Payroll.id == payslip.payroll_id
         ).first()
 
-        pdf_buffer = generate_payslip_pdf(payroll, contractor)
-        pdf_content = pdf_buffer.read()
-
-        # Portal link
         portal_link = f"{settings.frontend_url}/payslip/{payslip.access_token}"
-
-        # Render email template
         contractor_name = f"{contractor.first_name} {contractor.surname}"
-        html = self.templates.render(
-            "payslip",
-            contractor_name=contractor_name,
-            document_number=payslip.document_number,
-            period=payslip.period,
-            net_salary=payroll.net_salary if payroll else 0,
-            currency=payroll.currency if payroll else "AED",
-            portal_link=portal_link,
-        )
 
-        # Send with attachment
-        attachment = EmailAttachment(
-            filename=f"{payslip.document_number}.pdf",
-            content=pdf_content,
-            content_type="application/pdf",
-        )
+        success = _invoke_email_lambda("payslip", contractor.email, {
+            "contractor_name": contractor_name,
+            "document_number": payslip.document_number,
+            "period": payslip.period,
+            "net_salary": payroll.net_salary if payroll else 0,
+            "currency": payroll.currency if payroll else "AED",
+            "portal_link": portal_link,
+        })
 
-        result = await self.email.send(
-            to=contractor.email,
-            subject=f"Your Payslip for {payslip.period} - {payslip.document_number}",
-            html=html,
-            attachments=[attachment],
-        )
-
-        if result.success:
-            # Update status
+        if success:
             payslip.status = PayslipStatus.SENT
             payslip.sent_at = datetime.utcnow()
             self.db.commit()
@@ -220,7 +192,7 @@ class PayslipService:
                 }
             )
 
-        return result.success
+        return success
 
     async def send_bulk(self, payslip_ids: List[int]) -> Dict[str, List]:
         """
