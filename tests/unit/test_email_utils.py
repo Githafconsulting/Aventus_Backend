@@ -27,7 +27,7 @@ class TestEmailUtilFunctions:
             mock.contract_signing_url = "http://localhost:3000/contract/sign"
             mock.password_reset_url = "http://localhost:3000/reset-password"
             mock.company_name = "Aventus HR"
-            mock.from_email = "noreply@aventushr.com"
+            mock.support_email = "support@aventushr.com"
             yield mock
 
     def test_send_contract_email(self, mock_lambda_client, mock_settings):
@@ -43,6 +43,28 @@ class TestEmailUtilFunctions:
 
         assert result is True
         mock_lambda_client.invoke.assert_called_once()
+
+    def test_invoke_payload_structure(self, mock_lambda_client, mock_settings):
+        """Test that Lambda invoke uses correct payload structure per spec."""
+        import json
+        from app.utils.email import send_activation_email
+
+        send_activation_email(
+            contractor_email="test@example.com",
+            contractor_name="John Doe",
+            temporary_password="TempPass123!",
+        )
+
+        call_kwargs = mock_lambda_client.invoke.call_args
+        assert call_kwargs.kwargs["InvocationType"] == "RequestResponse"
+        assert call_kwargs.kwargs["FunctionName"] == "test-email-lambda"
+
+        payload = json.loads(call_kwargs.kwargs["Payload"])
+        assert "body" in payload
+        assert payload["body"]["email_type"] == "activation"
+        assert payload["body"]["recipient"] == "test@example.com"
+        assert payload["body"]["data"]["contractor_name"] == "John Doe"
+        assert payload["body"]["data"]["support_email"] == "support@aventushr.com"
 
     def test_send_activation_email(self, mock_lambda_client, mock_settings):
         """Test send_activation_email function."""

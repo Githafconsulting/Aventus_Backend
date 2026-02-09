@@ -171,10 +171,7 @@ def _send_invoice_to_client(
             "client_name": contractor.client_name or "Client",
             "contractor_name": contractor_name,
             "period": payroll.period,
-            "invoice_total": payroll.invoice_total or 0,
-            "vat_rate": payroll.vat_rate or 0,
-            "vat_amount": payroll.vat_amount or 0,
-            "total_payable": payroll.total_payable or 0,
+            "total_amount": str(payroll.total_payable or 0),
             "currency": payroll.currency,
         })
         print(f"[INFO] Invoice email sent to client: {client_email}")
@@ -200,9 +197,7 @@ def _send_payslip_to_contractor(
         _invoke_email_lambda("payslip", contractor.email, {
             "contractor_name": contractor_name,
             "period": payroll.period,
-            "days_worked": payroll.days_worked or 0,
-            "gross_pay": payroll.gross_pay or 0,
-            "net_salary": payroll.net_salary or 0,
+            "net_salary": str(payroll.net_salary or 0),
             "currency": payroll.currency,
         })
         print(f"[INFO] Payslip email sent to contractor: {contractor.email}")

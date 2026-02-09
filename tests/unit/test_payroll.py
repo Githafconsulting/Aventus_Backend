@@ -327,37 +327,6 @@ class TestPayrollHelperFunctions:
         )
         assert result == 100
 
-    def test_build_email_table_html(self):
-        """Test email table HTML generation."""
-        from app.routes.payroll import _build_email_table_html
-
-        rows = [
-            ("Name", "John Doe"),
-            ("Amount", "$1,000"),
-        ]
-        result = _build_email_table_html(rows)
-
-        assert "Name" in result
-        assert "John Doe" in result
-        assert "Amount" in result
-        assert "$1,000" in result
-        assert "<tr" in result
-        assert "<td" in result
-
-    def test_build_email_table_html_highlights_last_row(self):
-        """Test email table highlights last row by default."""
-        from app.routes.payroll import _build_email_table_html
-
-        rows = [
-            ("Item 1", "Value 1"),
-            ("Total", "100"),
-        ]
-        result = _build_email_table_html(rows, highlight_last=True)
-
-        # Last row should have background color and bold value
-        assert "background-color: #f9f9f9" in result
-        assert "<strong>100</strong>" in result
-
     def test_get_float_value_primary(self):
         """Test float extraction from primary value."""
         from app.routes.payroll import _get_float_value

@@ -174,7 +174,7 @@ class PayslipService:
             "contractor_name": contractor_name,
             "document_number": payslip.document_number,
             "period": payslip.period,
-            "net_salary": payroll.net_salary if payroll else 0,
+            "net_salary": str(payroll.net_salary) if payroll and payroll.net_salary else "0",
             "currency": payroll.currency if payroll else "AED",
             "portal_link": portal_link,
         })

@@ -206,7 +206,7 @@ class InvoiceService:
             "invoice_number": invoice.invoice_number,
             "contractor_name": contractor_name,
             "period": payroll.period if payroll else "",
-            "total_amount": invoice.total_amount,
+            "total_amount": str(invoice.total_amount),
             "currency": payroll.currency if payroll else "AED",
             "due_date": invoice.due_date.strftime("%B %d, %Y"),
             "portal_link": portal_link,
@@ -360,10 +360,10 @@ class InvoiceService:
             "client_name": client.company_name,
             "invoice_number": invoice.invoice_number,
             "contractor_name": contractor_name,
-            "balance": invoice.balance,
+            "balance": str(invoice.balance),
             "currency": payroll.currency if payroll else "AED",
             "due_date": invoice.due_date.strftime("%B %d, %Y"),
-            "days_overdue": days_overdue,
+            "days_overdue": str(days_overdue),
             "portal_link": portal_link,
         })
 

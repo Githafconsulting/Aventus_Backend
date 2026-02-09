@@ -1,8 +1,8 @@
 """
 Email sending utilities.
 
-All emails are sent via AWS Lambda (which uses SES templates),
-except send_quote_sheet_pdf_email which sends directly via SES with a PDF attachment.
+All emails are sent via AWS Lambda (which uses SES templates).
+The Lambda handles template rendering, company branding, and SES delivery.
 """
 import json
 import boto3
@@ -11,46 +11,32 @@ from typing import Optional
 
 from app.config import settings
 
-# Module-level cached boto3 clients (created once, reused)
+# Module-level cached Lambda client (created once, reused)
 _lambda_client = None
-_ses_client = None
 
 
 def _get_lambda_client():
-    """Get or create cached Lambda client."""
+    """Get or create cached Lambda client. Uses default credential chain."""
     global _lambda_client
     if _lambda_client is None:
         _lambda_client = boto3.client(
             "lambda",
             region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
         )
     return _lambda_client
 
 
-def _get_ses_client():
-    """Get or create cached SES client."""
-    global _ses_client
-    if _ses_client is None:
-        _ses_client = boto3.client(
-            "ses",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
-    return _ses_client
-
-
-def _invoke_email_lambda(email_type: str, recipient: str, data: dict, cc: Optional[str] = None) -> bool:
+def _invoke_email_lambda(email_type: str, recipient: str, data: dict) -> bool:
     """
     Invoke the AWS Lambda function to send an email.
+
+    Wraps payload in a "body" key per the Lambda spec and uses
+    InvocationType="RequestResponse".
 
     Args:
         email_type: The template type (e.g. "activation", "contract_signing")
         recipient: Recipient email address
         data: Template data dict
-        cc: Optional CC email address
 
     Returns:
         True if invocation succeeded, False otherwise
@@ -60,19 +46,23 @@ def _invoke_email_lambda(email_type: str, recipient: str, data: dict, cc: Option
         return False
 
     try:
-        payload = {
-            "email_type": email_type,
-            "recipient": recipient,
-            "data": data,
+        # Inject support_email if not already present
+        if "support_email" not in data:
+            data["support_email"] = settings.support_email
+
+        event = {
+            "body": {
+                "email_type": email_type,
+                "recipient": recipient,
+                "data": data,
+            }
         }
-        if cc:
-            payload["cc"] = cc
 
         client = _get_lambda_client()
         client.invoke(
             FunctionName=settings.email_lambda_function_name,
-            InvocationType="Event",  # Async fire-and-forget
-            Payload=json.dumps(payload).encode("utf-8"),
+            InvocationType="RequestResponse",
+            Payload=json.dumps(event),
         )
         print(f"[EMAIL] Lambda invoked: {email_type} -> {recipient}")
         return True
@@ -95,7 +85,7 @@ def send_contract_email(
     return _invoke_email_lambda("contract_signing", contractor_email, {
         "contractor_name": contractor_name,
         "contract_link": f"{settings.contract_signing_url}?token={contract_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     })
 
 
@@ -136,7 +126,7 @@ def send_document_upload_email(
     return _invoke_email_lambda("document_upload", contractor_email, {
         "contractor_name": contractor_name,
         "upload_link": f"{settings.frontend_url}/documents/upload/{upload_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     })
 
 
@@ -166,7 +156,7 @@ def send_password_reset_email(
     return _invoke_email_lambda("password_reset", email, {
         "name": name,
         "reset_link": f"{settings.password_reset_url}?token={reset_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     })
 
 
@@ -203,17 +193,12 @@ def send_quote_sheet_request_email(
     custom_message: Optional[str] = None
 ) -> bool:
     """Send quote sheet request to third party."""
-    data = {
+    return _invoke_email_lambda("quote_sheet_request", third_party_email, {
         "third_party_name": third_party_name,
         "contractor_name": contractor_name,
         "quote_link": f"{settings.frontend_url}/quote-sheet/{quote_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    }
-    if custom_message:
-        data["custom_message"] = custom_message
-    if custom_subject:
-        data["subject"] = custom_subject
-    return _invoke_email_lambda("quote_sheet_request", third_party_email, data, cc=cc_email)
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
+    })
 
 
 def send_cohf_email(
@@ -225,15 +210,12 @@ def send_cohf_email(
     custom_message: Optional[str] = None
 ) -> bool:
     """Send COHF signature request to third party."""
-    data = {
+    return _invoke_email_lambda("cohf", third_party_email, {
         "third_party_name": third_party_name,
         "contractor_name": contractor_name,
         "signing_link": f"{settings.frontend_url}/cohf/sign/{cohf_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    }
-    if custom_message:
-        data["custom_message"] = custom_message
-    return _invoke_email_lambda("cohf", third_party_email, data)
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
+    })
 
 
 # =============================================================================
@@ -253,7 +235,7 @@ def send_work_order_email(
         "recipient_name": recipient_name,
         "contractor_name": contractor_name,
         "work_order_link": f"{settings.frontend_url}/work-order/{work_order_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     }
     if client_name:
         data["client_name"] = client_name
@@ -272,7 +254,7 @@ def send_work_order_to_client(
         "client_name": client_name,
         "contractor_name": contractor_name,
         "signing_link": f"{settings.frontend_url}/sign-work-order/{work_order_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     })
 
 
@@ -293,7 +275,7 @@ def send_proposal_email(
         "recipient_name": recipient_name,
         "proposal_title": proposal_title,
         "proposal_link": f"{settings.frontend_url}/proposal/{proposal_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     }
     if contractor_name:
         data["contractor_name"] = contractor_name
@@ -319,7 +301,7 @@ def send_third_party_contractor_request(
         "third_party_name": third_party_name,
         "contractor_name": contractor_name,
         "action_link": f"{settings.frontend_url}/third-party/request/{action_token}",
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     }
     if role:
         data["role"] = role
@@ -341,6 +323,7 @@ def send_timesheet_to_manager(
     timesheet_month: str,
     review_link: str,
     total_days: float = 0,
+    total_hours: Optional[str] = None,
     work_days: int = 0,
     sick_days: int = 0,
     vacation_days: int = 0,
@@ -353,10 +336,7 @@ def send_timesheet_to_manager(
         "contractor_name": contractor_name,
         "timesheet_link": review_link,
         "period": timesheet_month,
-        "total_days": total_days,
-        "work_days": work_days,
-        "sick_days": sick_days,
-        "vacation_days": vacation_days,
+        "total_hours": total_hours if total_hours is not None else str(total_days),
     }
     if client_name:
         data["client_name"] = client_name
@@ -401,15 +381,12 @@ def send_quote_sheet_request(
     email_cc: Optional[str] = None
 ) -> bool:
     """Send quote sheet request to third party for Saudi route."""
-    data = {
+    return _invoke_email_lambda("quote_sheet_request", third_party_email, {
         "third_party_name": third_party_name,
         "contractor_name": contractor_name,
         "quote_link": upload_url,
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
-    }
-    if email_subject:
-        data["subject"] = email_subject
-    return _invoke_email_lambda("quote_sheet_request", third_party_email, data, cc=email_cc)
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
+    })
 
 
 def send_quote_sheet_form_link(
@@ -427,7 +404,7 @@ def send_quote_sheet_form_link(
         "third_party_name": third_party_name,
         "contractor_name": contractor_name,
         "form_link": form_link,
-        "expiry_date": expiry_date.strftime("%B %d, %Y at %I:%M %p"),
+        "expiry_date": expiry_date.strftime("%B %d, %Y"),
     }
     if role:
         data["role"] = role
@@ -449,54 +426,10 @@ def send_quote_sheet_pdf_email(
     """
     Send quote sheet PDF to third party via email.
 
-    This is the special case: no Lambda template exists for this email.
-    Sends directly via SES with a MIME attachment.
+    NOTE: No Lambda template exists for PDF attachments.
+    This function is currently disabled pending a solution for
+    sending email attachments through the Lambda/SES system.
     """
-    import base64
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
-
-    try:
-        msg = MIMEMultipart("mixed")
-        msg["Subject"] = f"Cost Estimation Sheet - {contractor_name}"
-        msg["From"] = settings.from_email
-        msg["To"] = third_party_email
-
-        html = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #9B1B1B;">Cost Estimation Sheet</h2>
-                <p>Dear {third_party_name or 'Team'},</p>
-                <p>Please find attached the Cost Estimation Sheet for <strong>{contractor_name}</strong>.</p>
-                <p>This document contains the detailed cost breakdown for your review.</p>
-                <p>If you have any questions or require clarification, please don't hesitate to contact us.</p>
-                <br/>
-                <p>Best regards,</p>
-                <p><strong>{company_name} Team</strong></p>
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;"/>
-                <p style="font-size: 12px; color: #666;">This is an automated email. Please do not reply directly to this message.</p>
-            </div>
-        </body>
-        </html>
-        """
-
-        body_part = MIMEText(html, "html")
-        msg.attach(body_part)
-
-        att = MIMEApplication(pdf_content)
-        att.add_header("Content-Disposition", "attachment", filename=pdf_filename)
-        msg.attach(att)
-
-        client = _get_ses_client()
-        client.send_raw_email(
-            Source=settings.from_email,
-            Destinations=[third_party_email],
-            RawMessage={"Data": msg.as_string()},
-        )
-        print(f"[EMAIL] SES raw email sent: quote_sheet_pdf -> {third_party_email}")
-        return True
-    except Exception as e:
-        print(f"[EMAIL] ERROR sending quote sheet PDF via SES: {e}")
-        return False
+    print("[EMAIL] WARNING: send_quote_sheet_pdf_email is not supported via Lambda. "
+          "PDF attachment emails require a new Lambda template or direct SES access.")
+    return False
