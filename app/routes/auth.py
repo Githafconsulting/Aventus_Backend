@@ -6,6 +6,9 @@ import uuid
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.contractor import Contractor
+from app.models.proposal import Proposal
+from app.models.work_order import WorkOrder
+from app.models.quote_sheet import QuoteSheet
 from app.schemas.auth import Token, UserResponse, UserLogin, PasswordReset, CreateUserRequest
 from app.utils.auth import (
     verify_password,
@@ -357,6 +360,31 @@ async def delete_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
+        )
+
+    # Check for linked records that prevent deletion
+    linked = []
+
+    contractor_count = db.query(Contractor).filter(Contractor.consultant_id == user_id).count()
+    if contractor_count:
+        linked.append(f"{contractor_count} contractor(s)")
+
+    proposal_count = db.query(Proposal).filter(Proposal.consultant_id == user_id).count()
+    if proposal_count:
+        linked.append(f"{proposal_count} proposal(s)")
+
+    work_order_count = db.query(WorkOrder).filter(WorkOrder.created_by == user_id).count()
+    if work_order_count:
+        linked.append(f"{work_order_count} work order(s)")
+
+    quote_sheet_count = db.query(QuoteSheet).filter(QuoteSheet.consultant_id == user_id).count()
+    if quote_sheet_count:
+        linked.append(f"{quote_sheet_count} quote sheet(s)")
+
+    if linked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete '{user.name}'. They are linked to {', '.join(linked)}. Remove or reassign these records first."
         )
 
     db.delete(user)
