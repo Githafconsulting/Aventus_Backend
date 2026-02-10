@@ -4003,14 +4003,27 @@ async def sign_cohf(
         contractor.cohf_data = updated_cohf_data
         flag_modified(contractor, "cohf_data")
 
-    # Save signature
+    # Save third party (Auxilium) signature
     contractor.cohf_third_party_name = signer_name
     contractor.cohf_third_party_signature = signature
     contractor.cohf_status = "signed"
     contractor.cohf_completed_date = datetime.now(timezone.utc)
 
-    # Update contractor status to COHF_COMPLETED
-    contractor.status = ContractorStatus.COHF_COMPLETED
+    # Auto counter-sign with Richard's (superadmin) signature
+    superadmin = db.query(User).filter(
+        User.role == UserRole.SUPERADMIN,
+        User.signature_type.isnot(None),
+        User.signature_data.isnot(None)
+    ).first()
+    if superadmin and superadmin.signature_data:
+        contractor.cohf_aventus_signature_type = superadmin.signature_type
+        contractor.cohf_aventus_signature_data = superadmin.signature_data
+        contractor.cohf_aventus_signed_date = datetime.now(timezone.utc)
+        contractor.cohf_aventus_signed_by = superadmin.id
+        contractor.cohf_status = "counter_signed"
+
+    # Update contractor status
+    contractor.status = ContractorStatus.PENDING_CDS_CS if superadmin and superadmin.signature_data else ContractorStatus.COHF_COMPLETED
 
     # Generate signed PDF and upload to storage
     try:
