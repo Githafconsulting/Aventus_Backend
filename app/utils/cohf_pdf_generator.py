@@ -593,23 +593,23 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
                 sig_text_style
             )
 
-    # Get superadmin (Aventus) signature - pre-signed by Richard
+    # Get superadmin (Aventus) signature for counter-signing
     superadmin_signature = contractor_data.get('superadmin_signature', '')
     superadmin_name = contractor_data.get('superadmin_name', signatory_name_aventus)
 
-    # 2 Signature blocks: Auxilium (third party) and Aventus (pre-signed by Richard)
+    # 2 Signature blocks: Auxilium signs first, then Aventus counter-signs
     sig_row = [
-        # Auxilium / Third Party Signatory
+        # Auxilium Signatory (signs first)
         [
+            Paragraph(f"{signatory_name}", sig_text_style),
             Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
             build_signature_block(third_party_signature, third_party_signer, signature_date, signature_type),
         ],
-        # Aventus Signatory (pre-signed by Richard)
+        # Aventus Signatory (counter-signs after Auxilium)
         [
+            Paragraph(f"{signatory_name_aventus}", sig_text_style),
             Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
-            build_signature_block(superadmin_signature, superadmin_name, '', 'drawn') if superadmin_signature else (
-                build_signature_block(aventus_signature_data, 'Aventus Admin', aventus_signed_date, aventus_signature_type) if aventus_signature_data else Paragraph(f"<br/><br/>______________________________<br/>{signatory_name_aventus}", sig_text_style)
-            ),
+            build_signature_block(aventus_signature_data or superadmin_signature, aventus_signature_data and 'Aventus Admin' or superadmin_name, aventus_signed_date, aventus_signature_type or 'drawn') if (aventus_signature_data or (superadmin_signature and aventus_signed_date)) else Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
         ],
     ]
 
