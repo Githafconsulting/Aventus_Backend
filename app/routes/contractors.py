@@ -59,6 +59,21 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 router = APIRouter(prefix="/contractors", tags=["Contractors"])
 
 
+def _parse_cohf_data(raw) -> dict | None:
+    """Safely parse cohf_data from the database, handling both str and dict."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except (json.JSONDecodeError, TypeError):
+            return None
+    if isinstance(raw, dict):
+        return raw
+    return None
+
+
 @router.post("/initial", response_model=ContractorDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_contractor_initial(
     contractor_data: ContractorInitialCreate,
@@ -3515,7 +3530,7 @@ async def get_cohf(
     return {
         "contractor_id": contractor_id,
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
-        "cohf_data": contractor.cohf_data,
+        "cohf_data": _parse_cohf_data(contractor.cohf_data),
         "cohf_status": contractor.cohf_status,
         "cohf_submitted_date": contractor.cohf_submitted_date,
         "cohf_sent_to_3rd_party_date": contractor.cohf_sent_to_3rd_party_date,
@@ -3558,7 +3573,7 @@ async def review_signed_cohf(
     return {
         "contractor_id": contractor_id,
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
-        "cohf_data": contractor.cohf_data,
+        "cohf_data": _parse_cohf_data(contractor.cohf_data),
         "cohf_status": contractor.cohf_status,
         "signed_date": contractor.cohf_completed_date,
         "third_party_name": contractor.cohf_third_party_name,
@@ -3595,9 +3610,10 @@ async def update_cohf(
             detail="COHF is only applicable for UAE route"
         )
 
-    # Save COHF data (accept dict directly)
+    # Save COHF data (accept dict directly, ensure it's a proper dict)
     if data.cohf_data:
-        contractor.cohf_data = data.cohf_data
+        cohf = data.cohf_data if isinstance(data.cohf_data, dict) else json.loads(data.cohf_data) if isinstance(data.cohf_data, str) else data.cohf_data
+        contractor.cohf_data = cohf
         flag_modified(contractor, "cohf_data")
 
     # Handle action
@@ -3679,7 +3695,12 @@ async def send_cohf_email_endpoint(
             detail="COHF data must be provided or saved before sending"
         )
 
-    # Store the cohf_data on the contractor for 3rd party to view
+    # Store the cohf_data on the contractor for 3rd party to view (ensure proper dict)
+    if isinstance(cohf_data_to_use, str):
+        try:
+            cohf_data_to_use = json.loads(cohf_data_to_use)
+        except (json.JSONDecodeError, TypeError):
+            pass
     contractor.cohf_data = cohf_data_to_use
     flag_modified(contractor, "cohf_data")
 
@@ -3812,7 +3833,7 @@ async def get_cohf_by_token(
     return {
         "contractor_id": contractor.id,
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
-        "cohf_data": contractor.cohf_data,
+        "cohf_data": _parse_cohf_data(contractor.cohf_data),
         "cohf_status": contractor.cohf_status,
         "already_signed": contractor.cohf_status == "signed"
     }
@@ -3939,8 +3960,13 @@ async def sign_cohf(
             detail="Signer name and signature are required"
         )
 
-    # Update COHF data if provided
+    # Update COHF data if provided (ensure proper dict)
     if updated_cohf_data:
+        if isinstance(updated_cohf_data, str):
+            try:
+                updated_cohf_data = json.loads(updated_cohf_data)
+            except (json.JSONDecodeError, TypeError):
+                pass
         contractor.cohf_data = updated_cohf_data
         flag_modified(contractor, "cohf_data")
 
@@ -4085,7 +4111,7 @@ async def view_signed_cohf(
     return {
         "contractor_id": contractor_id,
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
-        "cohf_data": contractor.cohf_data,
+        "cohf_data": _parse_cohf_data(contractor.cohf_data),
         "third_party_signature": {
             "name": contractor.cohf_third_party_name,
             "signature": contractor.cohf_third_party_signature,
