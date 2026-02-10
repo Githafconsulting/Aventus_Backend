@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.models.client import Client
+from app.models.contractor import Contractor
+from app.models.invoice import Invoice
+from app.models.proposal import Proposal
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from app.models.user import User, UserRole
 from app.utils.auth import get_current_active_user, require_role
@@ -132,6 +135,27 @@ async def delete_client(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Client company not found"
+        )
+
+    # Check for linked records that prevent deletion
+    linked = []
+
+    contractor_count = db.query(Contractor).filter(Contractor.client_id == client_id).count()
+    if contractor_count:
+        linked.append(f"{contractor_count} contractor(s)")
+
+    proposal_count = db.query(Proposal).filter(Proposal.client_id == client_id).count()
+    if proposal_count:
+        linked.append(f"{proposal_count} proposal(s)")
+
+    invoice_count = db.query(Invoice).filter(Invoice.client_id == client_id).count()
+    if invoice_count:
+        linked.append(f"{invoice_count} invoice(s)")
+
+    if linked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete '{client.company_name}'. It is linked to {', '.join(linked)}. Remove or reassign these records first."
         )
 
     db.delete(client)

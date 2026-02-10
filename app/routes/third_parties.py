@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
 from app.models.third_party import ThirdParty
+from app.models.contractor import Contractor
+from app.models.work_order import WorkOrder
+from app.models.quote_sheet import QuoteSheet
 from app.schemas.third_party import ThirdPartyCreate, ThirdPartyUpdate, ThirdPartyResponse
 from app.models.user import User, UserRole
 from app.utils.auth import get_current_active_user, require_role
@@ -148,6 +151,27 @@ async def delete_third_party(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Third party company not found"
+        )
+
+    # Check for linked records that prevent deletion
+    linked = []
+
+    contractor_count = db.query(Contractor).filter(Contractor.third_party_id == third_party_id).count()
+    if contractor_count:
+        linked.append(f"{contractor_count} contractor(s)")
+
+    work_order_count = db.query(WorkOrder).filter(WorkOrder.third_party_id == third_party_id).count()
+    if work_order_count:
+        linked.append(f"{work_order_count} work order(s)")
+
+    quote_sheet_count = db.query(QuoteSheet).filter(QuoteSheet.third_party_id == third_party_id).count()
+    if quote_sheet_count:
+        linked.append(f"{quote_sheet_count} quote sheet(s)")
+
+    if linked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete '{third_party.company_name}'. It is linked to {', '.join(linked)}. Remove or reassign these records first."
         )
 
     db.delete(third_party)
