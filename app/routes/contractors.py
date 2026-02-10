@@ -1,6 +1,7 @@
 # Contractors API routes
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -3597,6 +3598,7 @@ async def update_cohf(
     # Save COHF data (accept dict directly)
     if data.cohf_data:
         contractor.cohf_data = data.cohf_data
+        flag_modified(contractor, "cohf_data")
 
     # Handle action
     if data.action == "save":
@@ -3679,6 +3681,7 @@ async def send_cohf_email_endpoint(
 
     # Store the cohf_data on the contractor for 3rd party to view
     contractor.cohf_data = cohf_data_to_use
+    flag_modified(contractor, "cohf_data")
 
     # Generate unique token for 3rd party access
     cohf_token = str(uuid.uuid4())
@@ -3939,6 +3942,7 @@ async def sign_cohf(
     # Update COHF data if provided
     if updated_cohf_data:
         contractor.cohf_data = updated_cohf_data
+        flag_modified(contractor, "cohf_data")
 
     # Save signature
     contractor.cohf_third_party_name = signer_name
