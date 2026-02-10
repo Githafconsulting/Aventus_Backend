@@ -452,9 +452,9 @@ class ContractorDetailResponse(BaseModel):
     third_party_contract_url: Optional[str] = None
     third_party_contract_uploaded_date: Optional[datetime] = None
 
-    @field_validator('cohf_data', mode='before')
+    @field_validator('cohf_data', 'costing_sheet_data', 'cds_form_data', 'quote_sheet_data', mode='before')
     @classmethod
-    def validate_cohf_data(cls, v):
+    def validate_json_data(cls, v):
         import json
         # Handle NULL from database or empty dict
         if v is None or v == 'null' or v == {}:
@@ -462,7 +462,8 @@ class ContractorDetailResponse(BaseModel):
         # Handle JSON string from database
         if isinstance(v, str):
             try:
-                return json.loads(v)
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, dict) else None
             except json.JSONDecodeError:
                 return None
         return v

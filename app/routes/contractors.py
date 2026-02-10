@@ -1196,6 +1196,7 @@ async def submit_cds_form(
         **form_data,
         "saved_at": datetime.now().isoformat()
     }
+    flag_modified(contractor, "cds_form_data")
 
     # Keep status unchanged (either DOCUMENTS_UPLOADED or PENDING_CDS_CS)
     # Status will be changed to PENDING_REVIEW after costing sheet submission
@@ -1265,6 +1266,7 @@ async def submit_costing_sheet(
     }
 
     contractor.costing_sheet_data = costing_sheet_data
+    flag_modified(contractor, "costing_sheet_data")
 
     # Update status to PENDING_REVIEW so admin can approve/reject
     contractor.status = ContractorStatus.PENDING_REVIEW
