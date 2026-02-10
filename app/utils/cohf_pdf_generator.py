@@ -593,41 +593,23 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
                 sig_text_style
             )
 
-    # 4 Signature blocks as per template v2: 2 for Auxilium, 2 for Aventus
-    sig_row_1 = [
-        # Auxilium Signatory 1
-        [
-            Paragraph(f"Signed by {signatory_name} duly authorised", sig_text_style),
-            Paragraph("for and on behalf of", sig_text_style),
-            Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
-            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
-        ],
-        # Auxilium Signatory 2
-        [
-            Paragraph(f"Signed by {signatory_name} duly authorised", sig_text_style),
-            Paragraph("for and on behalf of", sig_text_style),
-            Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
-            Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
-        ],
-    ]
+    # Get superadmin (Aventus) signature - pre-signed by Richard
+    superadmin_signature = contractor_data.get('superadmin_signature', '')
+    superadmin_name = contractor_data.get('superadmin_name', signatory_name_aventus)
 
-    # Build client signature with potential signature
-    client_company_name = get_val('company_name', get_val('client_name', 'Client Company'))
-
-    sig_row_2 = [
-        # Aventus Signatory 1 - Counter-signature
+    # 2 Signature blocks: Auxilium (third party) and Aventus (pre-signed by Richard)
+    sig_row = [
+        # Auxilium / Third Party Signatory
         [
-            Paragraph(f"Signed by Aventus Admin duly authorised", sig_text_style),
-            Paragraph("for and on behalf of", sig_text_style),
-            Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
-            build_signature_block(aventus_signature_data, 'Aventus Admin', aventus_signed_date, aventus_signature_type) if aventus_signature_data else Paragraph("<br/><br/>______________________________<br/>[Authorised Signatory]", sig_text_style),
-        ],
-        # Aventus Signatory 2 / Third Party Signatory
-        [
-            Paragraph(f"Signed by Third Party duly authorised", sig_text_style),
-            Paragraph("for and on behalf of", sig_text_style),
             Paragraph(f"<b>{to_company_name}</b>", sig_text_bold),
             build_signature_block(third_party_signature, third_party_signer, signature_date, signature_type),
+        ],
+        # Aventus Signatory (pre-signed by Richard)
+        [
+            Paragraph("<b>Aventus Talent Consultancy</b>", sig_text_bold),
+            build_signature_block(superadmin_signature, superadmin_name, '', 'drawn') if superadmin_signature else (
+                build_signature_block(aventus_signature_data, 'Aventus Admin', aventus_signed_date, aventus_signature_type) if aventus_signature_data else Paragraph(f"<br/><br/>______________________________<br/>{signatory_name_aventus}", sig_text_style)
+            ),
         ],
     ]
 
@@ -643,30 +625,17 @@ def generate_cohf_pdf(contractor_data: dict, cohf_data: dict = None) -> BytesIO:
         ]))
         return inner_table
 
-    sig_table_1 = Table([
-        [create_sig_box(sig_row_1[0]), create_sig_box(sig_row_1[1])]
+    sig_table = Table([
+        [create_sig_box(sig_row[0]), create_sig_box(sig_row[1])]
     ], colWidths=[85*mm, 85*mm])
-    sig_table_1.setStyle(TableStyle([
+    sig_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOX', (0, 0), (0, 0), 0.5, colors.lightgrey),
         ('BOX', (1, 0), (1, 0), 0.5, colors.lightgrey),
         ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
     ]))
-    elements.append(sig_table_1)
-    elements.append(Spacer(1, 2*mm))
-
-    sig_table_2 = Table([
-        [create_sig_box(sig_row_2[0]), create_sig_box(sig_row_2[1])]
-    ], colWidths=[85*mm, 85*mm])
-    sig_table_2.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOX', (0, 0), (0, 0), 0.5, colors.lightgrey),
-        ('BOX', (1, 0), (1, 0), 0.5, colors.lightgrey),
-        ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
-    ]))
-    elements.append(sig_table_2)
+    elements.append(sig_table)
     elements.append(Spacer(1, 4*mm))
 
     # Footer note

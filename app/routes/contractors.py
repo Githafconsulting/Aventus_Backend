@@ -59,6 +59,19 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 router = APIRouter(prefix="/contractors", tags=["Contractors"])
 
 
+def _inject_superadmin_signature(contractor_data: dict, db) -> dict:
+    """Add superadmin (Aventus) signature to contractor_data for PDF generation."""
+    superadmin = db.query(User).filter(
+        User.role == UserRole.SUPERADMIN,
+        User.signature_type.isnot(None),
+        User.signature_data.isnot(None)
+    ).first()
+    if superadmin:
+        contractor_data['superadmin_signature'] = superadmin.signature_data
+        contractor_data['superadmin_name'] = superadmin.name
+    return contractor_data
+
+
 def _parse_cohf_data(raw) -> Optional[dict]:
     """Safely parse cohf_data from the database, handling both str and dict."""
     if raw is None:
@@ -3482,6 +3495,9 @@ async def get_cohf_pdf(
         elif isinstance(contractor.cohf_data, dict):
             cohf_data = contractor.cohf_data
 
+    # Inject superadmin signature for PDF
+    _inject_superadmin_signature(contractor_data, db)
+
     # Generate PDF
     pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
 
@@ -3829,13 +3845,27 @@ async def get_cohf_by_token(
             detail="This COHF has already been signed."
         )
 
+    # Get Aventus (superadmin) signature for pre-signing
+    superadmin = db.query(User).filter(
+        User.role == UserRole.SUPERADMIN,
+        User.signature_type.isnot(None)
+    ).first()
+
+    aventus_signature = None
+    aventus_signer_name = None
+    if superadmin and superadmin.signature_data:
+        aventus_signature = superadmin.signature_data
+        aventus_signer_name = superadmin.name
+
     # Return COHF data and contractor info
     return {
         "contractor_id": contractor.id,
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
         "cohf_data": _parse_cohf_data(contractor.cohf_data),
         "cohf_status": contractor.cohf_status,
-        "already_signed": contractor.cohf_status == "signed"
+        "already_signed": contractor.cohf_status == "signed",
+        "aventus_signature": aventus_signature,
+        "aventus_signer_name": aventus_signer_name or "Richard White"
     }
 
 
@@ -3891,6 +3921,9 @@ async def get_cohf_pdf_by_token(
                 cohf_data = {}
         elif isinstance(contractor.cohf_data, dict):
             cohf_data = contractor.cohf_data
+
+    # Inject superadmin signature for PDF
+    _inject_superadmin_signature(contractor_data, db)
 
     # Generate PDF
     pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
@@ -4005,6 +4038,9 @@ async def sign_cohf(
         cohf_data["third_party_signature"] = signature
         cohf_data["third_party_signature_type"] = signature_type
         cohf_data["signature_date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        # Inject superadmin signature for PDF
+        _inject_superadmin_signature(contractor_data, db)
 
         # Generate PDF
         pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
@@ -4200,6 +4236,9 @@ async def counter_sign_cohf(
         cohf_data["third_party_signer_name"] = contractor.cohf_third_party_name
         cohf_data["third_party_signature"] = contractor.cohf_third_party_signature
         cohf_data["third_party_signature_type"] = "drawn" if contractor.cohf_third_party_signature and contractor.cohf_third_party_signature.startswith("data:") else "typed"
+
+        # Inject superadmin signature for PDF
+        _inject_superadmin_signature(contractor_data, db)
 
         # Generate the fully signed PDF
         pdf_buffer = generate_cohf_pdf(contractor_data, cohf_data)
