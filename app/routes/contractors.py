@@ -59,7 +59,7 @@ from fastapi.responses import StreamingResponse, RedirectResponse
 router = APIRouter(prefix="/contractors", tags=["Contractors"])
 
 
-def _parse_cohf_data(raw) -> dict | None:
+def _parse_cohf_data(raw) -> Optional[dict]:
     """Safely parse cohf_data from the database, handling both str and dict."""
     if raw is None:
         return None
