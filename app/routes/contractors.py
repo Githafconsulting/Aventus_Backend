@@ -1366,6 +1366,120 @@ async def approve_contractor(
     }
 
 
+@router.put("/{contractor_id}/update-contract-data")
+async def update_contract_data(
+    contractor_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Update contractor data used for contract generation.
+    Accepts partial updates to contractor fields and cds_form_data.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Update direct contractor fields
+    direct_fields = [
+        "first_name", "surname", "client_name", "role", "location",
+        "duration", "start_date", "candidate_pay_rate", "currency"
+    ]
+    for field in direct_fields:
+        if field in data and data[field] is not None:
+            setattr(contractor, field, data[field])
+
+    # Merge cds_form_data
+    if "cds_form_data" in data and isinstance(data["cds_form_data"], dict):
+        existing_cds = contractor.cds_form_data or {}
+        if isinstance(existing_cds, str):
+            try:
+                existing_cds = json.loads(existing_cds)
+            except (json.JSONDecodeError, TypeError):
+                existing_cds = {}
+        existing_cds.update(data["cds_form_data"])
+        contractor.cds_form_data = existing_cds
+        flag_modified(contractor, "cds_form_data")
+
+    db.commit()
+    db.refresh(contractor)
+
+    return {"message": "Contract data updated", "contractor_id": contractor.id}
+
+
+@router.put("/{contractor_id}/update-work-order-data")
+async def update_work_order_data(
+    contractor_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Update work order data for a contractor.
+    If a WorkOrder exists, updates it directly. Otherwise updates the Contractor record
+    (used by the PDF fallback path).
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    # Check for existing work order
+    existing_work_order = db.query(WorkOrder).filter(
+        WorkOrder.contractor_id == contractor_id
+    ).order_by(WorkOrder.created_at.desc()).first()
+
+    wo_fields = [
+        "contractor_name", "client_name", "role", "location",
+        "start_date", "end_date", "duration", "charge_rate",
+        "pay_rate", "currency", "project_name"
+    ]
+
+    if existing_work_order:
+        for field in wo_fields:
+            if field in data and data[field] is not None:
+                setattr(existing_work_order, field, data[field])
+        db.commit()
+        db.refresh(existing_work_order)
+    else:
+        # Update contractor record (PDF fallback path)
+        contractor_field_map = {
+            "contractor_name": None,  # skip - derived from first_name + surname
+            "client_name": "client_name",
+            "role": "role",
+            "location": "location",
+            "start_date": "start_date",
+            "end_date": "end_date",
+            "duration": "duration",
+            "charge_rate": "client_charge_rate",
+            "pay_rate": "candidate_pay_rate",
+            "currency": "currency",
+            "project_name": "project_name",
+        }
+        for data_field, model_field in contractor_field_map.items():
+            if model_field and data_field in data and data[data_field] is not None:
+                setattr(contractor, model_field, data[data_field])
+
+        # Handle contractor_name -> first_name + surname
+        if "contractor_name" in data and data["contractor_name"]:
+            parts = data["contractor_name"].split(" ", 1)
+            contractor.first_name = parts[0]
+            contractor.surname = parts[1] if len(parts) > 1 else ""
+
+        db.commit()
+        db.refresh(contractor)
+
+    return {"message": "Work order data updated", "contractor_id": contractor.id}
+
+
 @router.get("/{contractor_id}/work-order")
 async def get_contractor_work_order(
     contractor_id: str,
