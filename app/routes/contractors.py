@@ -1437,20 +1437,41 @@ async def update_work_order_data(
         WorkOrder.contractor_id == contractor_id
     ).order_by(WorkOrder.created_at.desc()).first()
 
-    wo_fields = [
+    # Helper to parse date strings into datetime objects (or None)
+    def _parse_date(val):
+        if not val or val == "N/A":
+            return None
+        if isinstance(val, datetime):
+            return val
+        for fmt in ("%Y-%m-%d", "%d %B %Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+            try:
+                return datetime.strptime(val, fmt)
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    # String-only fields (no type conversion needed)
+    string_fields = [
         "contractor_name", "client_name", "role", "location",
-        "start_date", "end_date", "duration", "charge_rate",
-        "pay_rate", "currency", "project_name"
+        "duration", "charge_rate", "pay_rate", "currency", "project_name"
     ]
+    # Date fields that need parsing for WorkOrder (DateTime columns)
+    date_fields = ["start_date", "end_date"]
 
     if existing_work_order:
-        for field in wo_fields:
-            if field in data and data[field] is not None:
+        for field in string_fields:
+            if field in data and data[field] is not None and data[field] != "":
                 setattr(existing_work_order, field, data[field])
+        for field in date_fields:
+            if field in data and data[field] is not None and data[field] != "":
+                parsed = _parse_date(data[field])
+                if parsed:
+                    setattr(existing_work_order, field, parsed)
         db.commit()
         db.refresh(existing_work_order)
     else:
         # Update contractor record (PDF fallback path)
+        # Contractor stores dates as strings, so no parsing needed
         contractor_field_map = {
             "contractor_name": None,  # skip - derived from first_name + surname
             "client_name": "client_name",
@@ -1465,7 +1486,7 @@ async def update_work_order_data(
             "project_name": "project_name",
         }
         for data_field, model_field in contractor_field_map.items():
-            if model_field and data_field in data and data[data_field] is not None:
+            if model_field and data_field in data and data[data_field] is not None and data[data_field] != "":
                 setattr(contractor, model_field, data[data_field])
 
         # Handle contractor_name -> first_name + surname
