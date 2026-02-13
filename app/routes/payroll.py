@@ -9,6 +9,7 @@ from io import BytesIO
 
 from app.database import get_db
 from app.models.payroll import Payroll, PayrollStatus, RateType
+from app.models.payroll_batch import PayrollBatch
 from app.models.timesheet import Timesheet, TimesheetStatus
 from app.models.contractor import Contractor
 from app.services.expense_service import get_approved_expenses_total
@@ -453,6 +454,14 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
     db.add(payroll)
     db.commit()
     db.refresh(payroll)
+
+    # Auto-assign to batch based on contractor's client/route
+    try:
+        from app.services.payroll_batch_service import assign_payroll_to_batch
+        assign_payroll_to_batch(db, payroll.id)
+        db.commit()
+    except Exception as e:
+        print(f"Warning: Could not assign payroll {payroll.id} to batch: {e}")
 
     return payroll.id
 
@@ -1007,6 +1016,23 @@ def approve_payroll(
     if payroll.status != PayrollStatus.CALCULATED:
         raise HTTPException(status_code=400, detail="Payroll must be in CALCULATED status to approve")
 
+    # Batch mode: just update status, no emails (batch workflow handles those)
+    if payroll.batch_id:
+        payroll.status = PayrollStatus.APPROVED
+        payroll.approved_at = datetime.utcnow()
+        db.commit()
+
+        # Check if batch should advance
+        try:
+            from app.services.payroll_batch_service import check_and_advance_batch
+            check_and_advance_batch(db, payroll.batch_id)
+            db.commit()
+        except Exception as e:
+            print(f"Warning: Could not advance batch: {e}")
+
+        return {"message": "Payroll approved (batch mode).", "status": payroll.status.value}
+
+    # Legacy mode: send emails as before
     contractor = db.query(Contractor).filter(Contractor.id == payroll.contractor_id).first()
     if not contractor:
         raise HTTPException(status_code=404, detail="Contractor not found")

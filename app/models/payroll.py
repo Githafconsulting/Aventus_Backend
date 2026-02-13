@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum as SQLEnum, JSON, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -9,6 +9,8 @@ class PayrollStatus(str, enum.Enum):
     PENDING = "pending"
     CALCULATED = "calculated"
     APPROVED = "approved"
+    APPROVED_ADJUSTED = "approved_adjusted"
+    MISMATCH_3RD_PARTY = "mismatch_3rd_party"
     PAID = "paid"
 
 
@@ -85,6 +87,15 @@ class Payroll(Base):
     charge_rate_day = Column(Float, nullable=True)
     invoice_amount = Column(Float, nullable=True)
 
+    # Batch reference (nullable for backward compatibility)
+    batch_id = Column(Integer, ForeignKey("payroll_batches.id"), nullable=True)
+
+    # 3rd party reconciliation
+    tp_draft_amount = Column(Float, nullable=True)
+    reconciliation_notes = Column(Text, nullable=True)
+    adjusted_by = Column(String, ForeignKey("users.id"), nullable=True)
+    adjusted_at = Column(DateTime, nullable=True)
+
     # Status workflow: PENDING -> CALCULATED -> APPROVED -> PAID
     status = Column(SQLEnum(PayrollStatus), default=PayrollStatus.CALCULATED)
 
@@ -100,5 +111,7 @@ class Payroll(Base):
     timesheet = relationship("Timesheet", back_populates="payroll")
     contractor = relationship("Contractor", back_populates="payrolls")
     approver = relationship("User", foreign_keys=[approved_by])
+    adjuster = relationship("User", foreign_keys=[adjusted_by])
     payslip = relationship("Payslip", back_populates="payroll", uselist=False)
     invoice = relationship("Invoice", back_populates="payroll", uselist=False)
+    batch = relationship("PayrollBatch", back_populates="payrolls")

@@ -371,6 +371,101 @@ def send_uploaded_timesheet_to_manager(
 # Quote Sheet (Saudi Route)
 # =============================================================================
 
+# =============================================================================
+# Payroll Batches
+# =============================================================================
+
+def send_batch_invoice_request(
+    recipient_email: str,
+    recipient_name: str,
+    period: str,
+    client_name: str,
+    route_label: str,
+    contractor_count: int,
+    total_payable: float,
+    currency: str,
+    upload_link: str,
+    deadline: str,
+    custom_message: Optional[str] = None,
+) -> bool:
+    """Send invoice request to 3rd party for a payroll batch."""
+    data = {
+        "recipient_name": recipient_name,
+        "period": period,
+        "client_name": client_name,
+        "route_label": route_label,
+        "contractor_count": str(contractor_count),
+        "total_payable": f"{currency} {total_payable:,.2f}",
+        "upload_link": upload_link,
+        "deadline": deadline,
+    }
+    if custom_message:
+        data["custom_message"] = custom_message
+    return _invoke_email_lambda("batch_invoice_request", recipient_email, data)
+
+
+def send_freelancer_invoice_request(
+    freelancer_email: str,
+    freelancer_name: str,
+    period: str,
+    total_payable: float,
+    currency: str,
+    upload_link: str,
+    deadline: str,
+) -> bool:
+    """Send invoice request to freelancer for their payroll batch."""
+    return _invoke_email_lambda("freelancer_invoice_request", freelancer_email, {
+        "freelancer_name": freelancer_name,
+        "period": period,
+        "total_payable": f"{currency} {total_payable:,.2f}",
+        "upload_link": upload_link,
+        "deadline": deadline,
+    })
+
+
+def send_batch_invoice_update_request(
+    recipient_email: str,
+    recipient_name: str,
+    period: str,
+    client_name: str,
+    finance_notes: str,
+    upload_link: str,
+) -> bool:
+    """Request a corrected invoice from 3rd party after finance review."""
+    return _invoke_email_lambda("batch_invoice_update_request", recipient_email, {
+        "recipient_name": recipient_name,
+        "period": period,
+        "client_name": client_name,
+        "finance_notes": finance_notes,
+        "upload_link": upload_link,
+    })
+
+
+def send_client_invoice_email(
+    client_email: str,
+    client_name: str,
+    invoice_number: str,
+    period: str,
+    total_amount: float,
+    currency: str,
+    portal_link: str,
+    due_date: str,
+) -> bool:
+    """Send consolidated client invoice notification."""
+    return _invoke_email_lambda("client_invoice", client_email, {
+        "client_name": client_name,
+        "invoice_number": invoice_number,
+        "period": period,
+        "total_amount": f"{currency} {total_amount:,.2f}",
+        "portal_link": portal_link,
+        "due_date": due_date,
+    })
+
+
+# =============================================================================
+# Quote Sheet (Saudi Route)
+# =============================================================================
+
 def send_quote_sheet_request(
     third_party_email: str,
     third_party_name: str,

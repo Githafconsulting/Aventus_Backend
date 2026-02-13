@@ -20,10 +20,10 @@ router = APIRouter(prefix="/api/v1/third-parties", tags=["third-parties"])
 async def create_third_party(
     third_party_data: ThirdPartyCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Create a new third party company (Admin/Superadmin only)
+    Create a new third party company (Consultant/Admin/Superadmin)
     """
     # Check if company name already exists
     existing = db.query(ThirdParty).filter(ThirdParty.company_name == third_party_data.company_name).first()
@@ -100,10 +100,10 @@ async def update_third_party(
     third_party_id: str,
     third_party_data: ThirdPartyUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Update a third party company (Admin/Superadmin only)
+    Update a third party company (Consultant/Admin/Superadmin)
     """
     third_party = db.query(ThirdParty).filter(ThirdParty.id == third_party_id).first()
 
@@ -186,10 +186,10 @@ async def upload_third_party_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPERADMIN]))
+    current_user: User = Depends(require_role([UserRole.CONSULTANT, UserRole.ADMIN, UserRole.SUPERADMIN]))
 ):
     """
-    Upload a document for a third party company (Admin/Superadmin only)
+    Upload a document for a third party company (Consultant/Admin/Superadmin)
     """
     third_party = db.query(ThirdParty).filter(ThirdParty.id == third_party_id).first()
 

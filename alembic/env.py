@@ -23,6 +23,8 @@ from app.config.settings import settings
 # Import all models so they're registered with Base.metadata
 from app.models import user, contractor, client, contract, timesheet
 from app.models import work_order, third_party, quote_sheet, proposal, template
+from app.models import payroll, payslip, invoice, payroll_batch, client_invoice
+from app.models import notification, offboarding, contract_extension, expense
 
 # this is the Alembic Config object
 config = context.config

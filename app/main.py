@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
-from app.routes import auth, contractors, third_parties, timesheets, clients, contracts, work_orders, templates, quote_sheets, proposals, payroll, payslips, invoices, notifications, offboarding, contract_extensions, expenses
+from app.routes import auth, contractors, third_parties, timesheets, clients, contracts, work_orders, templates, quote_sheets, proposals, payroll, payslips, invoices, notifications, offboarding, contract_extensions, expenses, payroll_batches, client_invoices
 from app.database import engine, Base
 import traceback
 
@@ -59,6 +59,8 @@ app.include_router(notifications.router)  # Already has /api/v1/notifications pr
 app.include_router(offboarding.router)  # Already has /api/v1/offboarding prefix
 app.include_router(contract_extensions.router)  # Already has /api/v1 prefix
 app.include_router(expenses.router)  # Already has /api/v1/expenses prefix
+app.include_router(payroll_batches.router)  # Already has /api/v1/payroll-batches prefix
+app.include_router(client_invoices.router)  # Already has /api/v1/client-invoices prefix
 
 
 @app.get("/")

@@ -15,6 +15,8 @@ from app.models.notification import Notification, NotificationType
 from app.models.offboarding import OffboardingRecord, OffboardingReason, OffboardingStatus
 from app.models.contract_extension import ContractExtension, ExtensionStatus
 from app.models.expense import Expense, ExpenseStatus, ExpenseCategory
+from app.models.payroll_batch import PayrollBatch, BatchStatus
+from app.models.client_invoice import ClientInvoice, ClientInvoiceStatus, ClientInvoiceLineItem, ClientInvoicePayment
 
 __all__ = [
     "User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet",
@@ -25,5 +27,7 @@ __all__ = [
     "Notification", "NotificationType",
     "OffboardingRecord", "OffboardingReason", "OffboardingStatus",
     "ContractExtension", "ExtensionStatus",
-    "Expense", "ExpenseStatus", "ExpenseCategory"
+    "Expense", "ExpenseStatus", "ExpenseCategory",
+    "PayrollBatch", "BatchStatus",
+    "ClientInvoice", "ClientInvoiceStatus", "ClientInvoiceLineItem", "ClientInvoicePayment",
 ]
