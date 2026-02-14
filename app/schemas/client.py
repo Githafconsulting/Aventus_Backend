@@ -116,6 +116,7 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     id: str
+    third_party_id: Optional[str] = None
     documents: Optional[List[Dict[str, Any]]] = []
     projects: Optional[List[Dict[str, Any]]] = []
     created_at: datetime
