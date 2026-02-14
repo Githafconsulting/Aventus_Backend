@@ -143,6 +143,19 @@ def get_batch_detail(batch_id: int, db: Session = Depends(get_db)):
     return _format_batch_response(batch, include_payrolls=True)
 
 
+@router.put("/{batch_id}/approve-all")
+def approve_all_payrolls_in_batch(
+    batch_id: int,
+    db: Session = Depends(get_db),
+):
+    """Approve all CALCULATED payrolls in a batch at once."""
+    result = payroll_batch_service.approve_all_payrolls_in_batch(db, batch_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    db.commit()
+    return result
+
+
 @router.put("/{batch_id}/payrolls/{payroll_id}/approve")
 def approve_payroll_in_batch(
     batch_id: int,

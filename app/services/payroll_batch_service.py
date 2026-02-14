@@ -158,6 +158,40 @@ def approve_payroll_in_batch(db: Session, batch_id: int, payroll_id: int) -> dic
     return {"success": True, "batch_status": batch.status.value}
 
 
+def approve_all_payrolls_in_batch(db: Session, batch_id: int) -> dict:
+    """
+    Approve all CALCULATED payrolls in a batch at once.
+    Returns count of approved payrolls and resulting batch status.
+    """
+    batch = db.query(PayrollBatch).filter(PayrollBatch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch not found"}
+
+    if batch.status not in (BatchStatus.AWAITING_APPROVAL, BatchStatus.PARTIALLY_APPROVED):
+        return {"error": f"Batch must be in awaiting_approval or partially_approved status, currently {batch.status.value}"}
+
+    payrolls = db.query(Payroll).filter(
+        Payroll.batch_id == batch_id,
+        Payroll.status == PayrollStatus.CALCULATED,
+    ).all()
+
+    if not payrolls:
+        return {"error": "No payrolls in CALCULATED status to approve"}
+
+    now = datetime.utcnow()
+    for p in payrolls:
+        p.status = PayrollStatus.APPROVED
+        p.approved_at = now
+
+    _check_and_advance_batch(db, batch)
+    db.flush()
+    return {
+        "success": True,
+        "approved_count": len(payrolls),
+        "batch_status": batch.status.value,
+    }
+
+
 def adjust_payroll_in_batch(
     db: Session, batch_id: int, payroll_id: int,
     adjustments: dict, notes: str, adjusted_by: str
