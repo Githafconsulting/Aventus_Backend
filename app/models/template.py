@@ -14,6 +14,8 @@ class TemplateType(str, enum.Enum):
     COHF = "cohf"
     SCHEDULE_FORM = "schedule_form"
     QUOTE_SHEET = "quote_sheet"
+    PAYSLIP = "payslip"
+    INVOICE = "invoice"
 
 
 class Template(Base):
