@@ -2665,6 +2665,12 @@ async def get_contractor_documents(
             "uploaded_date": contractor.signed_date
         })
 
+    # Contractors should only see their own uploaded documents, contracts and payslips
+    # Hide internal admin documents (COHF, Quote Sheet) from contractors
+    if current_user.role == UserRole.CONTRACTOR:
+        internal_types = {"cohf_signed", "third_party", "quote_sheet"}
+        documents = [doc for doc in documents if doc["document_type"] not in internal_types]
+
     return {
         "contractor_id": contractor_id,
         "documents": documents,
