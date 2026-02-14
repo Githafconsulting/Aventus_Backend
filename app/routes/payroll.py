@@ -404,12 +404,23 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         # For daily rate: pay based on days worked
         net_salary = gross_pay + expenses_reimbursement
 
-    # Accruals (default to 0)
+    # Accruals - use costing sheet values where available
     accrual_gosi = 0
     accrual_salary_transfer = 0
     accrual_admin_costs = 0
+    accrual_gratuity = info["accrual_gratuity"]
+    accrual_airfare = info["accrual_airfare"]
+    accrual_annual_leave = info["accrual_annual_leave"]
     accrual_other = 0
-    total_accruals = accrual_gosi + accrual_salary_transfer + accrual_admin_costs + accrual_other
+    total_accruals = _calculate_total_accruals(
+        gosi=accrual_gosi,
+        salary_transfer=accrual_salary_transfer,
+        admin_costs=accrual_admin_costs,
+        gratuity=accrual_gratuity,
+        airfare=accrual_airfare,
+        annual_leave=accrual_annual_leave,
+        other=accrual_other,
+    )
 
     # Management fee
     management_fee = info["management_fee"]
@@ -425,6 +436,8 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         timesheet_id=timesheet_id,
         contractor_id=contractor.id,
         period=period,
+        client_name=info["client_name"],
+        third_party_name=info["third_party_name"],
         rate_type=rate_type,
         currency=info["currency"],
         monthly_rate=monthly_rate,
@@ -434,12 +447,19 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         days_worked=days_worked,
         previous_month_days_worked=previous_month_days_worked,
         gross_pay=gross_pay,
+        leave_allowance=leave_allowance,
+        total_leave_allowance=leave_allowance,
+        total_leave_taken=leave_taken,
+        leave_balance=leave_balance,
         leave_deductibles=total_leave_deductibles,
         expenses_reimbursement=expenses_reimbursement,
         net_salary=net_salary,
         accrual_gosi=accrual_gosi,
         accrual_salary_transfer=accrual_salary_transfer,
         accrual_admin_costs=accrual_admin_costs,
+        accrual_gratuity=accrual_gratuity,
+        accrual_airfare=accrual_airfare,
+        accrual_annual_leave=accrual_annual_leave,
         accrual_other=accrual_other,
         total_accruals=total_accruals,
         management_fee=management_fee,
@@ -447,6 +467,7 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         vat_rate=vat_rate,
         vat_amount=vat_amount,
         total_payable=total_invoice,
+        country=info["country"],
         status=PayrollStatus.CALCULATED,
         calculated_at=datetime.utcnow(),
     )
