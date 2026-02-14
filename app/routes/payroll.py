@@ -871,6 +871,7 @@ def get_payroll_detailed(
         "third_party_name": payroll.third_party_name,
         "currency": payroll.currency,
         "rate_type": payroll.rate_type.value if payroll.rate_type else "monthly",
+        "country": payroll.country,
 
         # Basic Calculation - Monthly
         "basic_monthly": {
