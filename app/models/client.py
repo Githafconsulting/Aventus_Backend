@@ -12,6 +12,7 @@ class Client(Base):
 
     # Company Information
     company_name = Column(String, nullable=False, unique=True, index=True)
+    third_party_id = Column(String, nullable=False)
     industry = Column(String, nullable=True)
     company_reg_no = Column(String, nullable=True)
     company_vat_no = Column(String, nullable=True)

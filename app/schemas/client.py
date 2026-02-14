@@ -14,6 +14,7 @@ class Project(BaseModel):
 
 class ClientBase(BaseModel):
     company_name: str = Field(..., min_length=1, max_length=200)
+    third_party_id: str = Field(..., min_length=1)
     industry: Optional[str] = None
     company_reg_no: Optional[str] = None
     company_vat_no: Optional[str] = None
@@ -66,6 +67,7 @@ class ClientCreate(ClientBase):
 
 class ClientUpdate(BaseModel):
     company_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    third_party_id: Optional[str] = None
     industry: Optional[str] = None
     company_reg_no: Optional[str] = None
     company_vat_no: Optional[str] = None
