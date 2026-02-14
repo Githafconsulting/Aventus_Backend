@@ -252,7 +252,7 @@ def _get_contractor_full_info(contractor: Contractor, db: Session) -> dict:
 
     # Accruals from costing sheet - using DRY helper
     accrual_gratuity = _get_float_value(None, costing, "eosb", None) or _get_float_value(None, costing, "gratuity", 0)
-    accrual_airfare = _get_float_value(None, costing, "airfare", 0)
+    accrual_airfare = _get_float_value(None, costing, "flights", None) or _get_float_value(None, costing, "airfare", 0)
     accrual_annual_leave = _get_float_value(None, costing, "leave", None) or _get_float_value(None, costing, "annualLeave", 0)
 
     return {

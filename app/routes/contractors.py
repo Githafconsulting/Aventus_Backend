@@ -784,8 +784,16 @@ async def get_cds_form(
 
         # Map COHF fields to CDS fields (only if not already in CDS)
         # Personal Information
-        if not cds_data.get('firstName') and cohf.get('first_name'):
-            cds_data['firstName'] = cohf.get('first_name')
+        # COHF stores combined full_name - split into firstName/lastName for CDS
+        if not cds_data.get('firstName'):
+            full_name = cohf.get('full_name', '')
+            if full_name:
+                name_parts = full_name.strip().split(' ', 1)
+                cds_data['firstName'] = name_parts[0]
+                if len(name_parts) > 1 and not cds_data.get('lastName'):
+                    cds_data['lastName'] = name_parts[1]
+            elif cohf.get('first_name'):
+                cds_data['firstName'] = cohf.get('first_name')
         if not cds_data.get('lastName') and cohf.get('surname'):
             cds_data['lastName'] = cohf.get('surname')
         if not cds_data.get('title') and cohf.get('title'):
@@ -828,12 +836,12 @@ async def get_cds_form(
         # Deployment Information
         if not cds_data.get('visaType') and cohf.get('visa_type'):
             cds_data['visaType'] = cohf.get('visa_type')
-        if not cds_data.get('jobTitle'):
-            cds_data['jobTitle'] = cohf.get('job_title') or cohf.get('role')
-        if not cds_data.get('companyName'):
-            cds_data['companyName'] = cohf.get('company_name') or cohf.get('client_name')
-        if not cds_data.get('workLocation') and cohf.get('work_location'):
-            cds_data['workLocation'] = cohf.get('work_location')
+        if not cds_data.get('role'):
+            cds_data['role'] = cohf.get('job_title') or cohf.get('role')
+        if not cds_data.get('clientName'):
+            cds_data['clientName'] = cohf.get('company_name') or cohf.get('client_name')
+        if not cds_data.get('location') and cohf.get('work_location'):
+            cds_data['location'] = cohf.get('work_location')
         if not cds_data.get('startDate'):
             cds_data['startDate'] = cohf.get('expected_start_date') or cohf.get('start_date')
         if not cds_data.get('duration'):
@@ -850,8 +858,8 @@ async def get_cds_form(
             cds_data['weeklyWorkingDays'] = cohf.get('weekly_working_days')
         if not cds_data.get('weekendDays') and cohf.get('weekend_days'):
             cds_data['weekendDays'] = cohf.get('weekend_days')
-        if not cds_data.get('chargeableRate') and cohf.get('chargeable_rate'):
-            cds_data['chargeableRate'] = cohf.get('chargeable_rate')
+        if not cds_data.get('chargeRateMonth') and cohf.get('chargeable_rate'):
+            cds_data['chargeRateMonth'] = cohf.get('chargeable_rate')
 
     return {
         "contractor_id": contractor_id,
