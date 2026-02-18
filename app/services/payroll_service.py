@@ -435,11 +435,8 @@ class PayrollService:
             contractor_id=contractor_id,
             # Basic Info
             period=calculation.period,
-            client_name=calculation.client_name,
-            third_party_name=calculation.third_party_name,
             currency=calculation.gross_pay.currency,
             rate_type=calculation.rate_type,
-            country=calculation.country,
             # Basic Calculation
             monthly_rate=calculation.monthly_rate.to_float() if calculation.monthly_rate else None,
             total_calendar_days=calculation.total_calendar_days,

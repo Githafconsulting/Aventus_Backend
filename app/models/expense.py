@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, ForeignKey, Text, Enum as SQLEnum, extract
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -30,8 +31,6 @@ class Expense(Base):
     # Expense details
     date = Column(Date, nullable=False)
     month = Column(String, nullable=False)  # e.g. "February 2026" (for payroll linkage)
-    year = Column(Integer, nullable=False)
-    month_number = Column(Integer, nullable=False)
     category = Column(SQLEnum(ExpenseCategory, values_callable=lambda x: [e.value for e in x]), nullable=False)
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
@@ -48,6 +47,23 @@ class Expense(Base):
     reviewed_by = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Derived fields (from date column)
+    @hybrid_property
+    def year(self):
+        return self.date.year if self.date else None
+
+    @year.expression
+    def year(cls):
+        return extract('year', cls.date)
+
+    @hybrid_property
+    def month_number(self):
+        return self.date.month if self.date else None
+
+    @month_number.expression
+    def month_number(cls):
+        return extract('month', cls.date)
 
     # Relationships
     contractor = relationship("Contractor", back_populates="expenses")

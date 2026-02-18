@@ -31,7 +31,7 @@ class BatchListResponse(BaseModel):
     id: int
     period: str
     client_id: str
-    client_name: str
+    client_name: Optional[str] = None
     onboarding_route: str
     route_label: Optional[str] = None
     third_party_name: Optional[str] = None

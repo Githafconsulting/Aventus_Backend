@@ -25,11 +25,9 @@ class PayrollBatch(Base):
     # Grouping keys
     period = Column(String, nullable=False)  # e.g. "January 2026"
     client_id = Column(String, ForeignKey("clients.id"), nullable=False)
-    client_name = Column(String, nullable=False)  # Denormalized for display
     onboarding_route = Column(String, nullable=False)  # OnboardingRoute value
     route_label = Column(String, nullable=True)  # e.g. "UAE - Auxilium"
     third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=True)
-    third_party_name = Column(String, nullable=True)
 
     # Aggregates
     contractor_count = Column(Integer, default=0)
@@ -63,6 +61,29 @@ class PayrollBatch(Base):
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Properties — resolved from FK relationships (Phase 6)
+    @property
+    def client_name(self):
+        try:
+            return self.client.company_name if self.client else None
+        except Exception:
+            return None
+
+    @client_name.setter
+    def client_name(self, value):
+        pass
+
+    @property
+    def third_party_name(self):
+        try:
+            return self.third_party.company_name if self.third_party else None
+        except Exception:
+            return None
+
+    @third_party_name.setter
+    def third_party_name(self, value):
+        pass
 
     # Relationships
     payrolls = relationship("Payroll", back_populates="batch")

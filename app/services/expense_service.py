@@ -20,11 +20,9 @@ async def create_expense(
     receipt_file: UploadFile,
     currency: str = "AED",
 ) -> Expense:
-    # Parse month/year from date
+    # Parse month from date
     expense_date = date if hasattr(date, 'year') else datetime.strptime(str(date), "%Y-%m-%d")
     month_str = expense_date.strftime("%B %Y")
-    year = expense_date.year
-    month_number = expense_date.month
 
     receipt_url = await storage.upload_document(
         file=receipt_file,
@@ -36,8 +34,6 @@ async def create_expense(
         contractor_id=contractor_id,
         date=expense_date,
         month=month_str,
-        year=year,
-        month_number=month_number,
         category=category,
         description=description,
         amount=amount,

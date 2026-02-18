@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, ForeignKey, Integer, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 import uuid
@@ -61,12 +61,6 @@ class Client(Base):
     # Supporting Documents
     supporting_documents_required = Column(JSON, default=lambda: [], nullable=True)  # List of required documents: Invoice, Timesheet, etc.
 
-    # Documents
-    documents = Column(JSON, default=lambda: [])  # Store uploaded document URLs and metadata
-
-    # Projects
-    projects = Column(JSON, default=lambda: [], nullable=True)  # List of projects with name, description, dates, budget, status
-
     # Status
     is_active = Column(Boolean, default=True, nullable=False)
 
@@ -76,3 +70,61 @@ class Client(Base):
 
     # Relationships
     invoices = relationship("Invoice", back_populates="client")
+    client_documents = relationship("ClientDocument", back_populates="client", cascade="all, delete-orphan")
+    client_projects = relationship("ClientProject", back_populates="client", cascade="all, delete-orphan")
+
+    @property
+    def documents(self):
+        """Backward-compat property: serialize child docs as list of dicts."""
+        return [
+            {
+                "type": d.document_type,
+                "filename": d.filename,
+                "url": d.url,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            }
+            for d in (self.client_documents or [])
+        ]
+
+    @property
+    def projects(self):
+        """Backward-compat property: serialize child projects as list of dicts."""
+        return [
+            {
+                "name": p.name,
+                "description": p.description,
+                "status": p.status,
+                "third_party_id": p.third_party_id,
+                "third_party_name": p.third_party_name,
+            }
+            for p in (self.client_projects or [])
+        ]
+
+
+class ClientDocument(Base):
+    __tablename__ = "client_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_type = Column(String, nullable=True)
+    filename = Column(String, nullable=True)
+    url = Column(String, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client", back_populates="client_documents")
+
+
+class ClientProject(Base):
+    __tablename__ = "client_projects"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, default="Planning")
+    third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=True)
+    third_party_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    client = relationship("Client", back_populates="client_projects")

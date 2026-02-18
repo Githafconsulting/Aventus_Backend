@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = 'a1b2c3d4e5f6'
-down_revision = None  # Set to latest revision ID if chaining migrations
+down_revision = 'add_quote_sheet_data'
 branch_labels = None
 depends_on = None
 

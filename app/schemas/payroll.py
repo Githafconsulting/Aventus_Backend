@@ -51,7 +51,7 @@ class PayrollListResponse(BaseModel):
     id: int
     timesheet_id: int
     contractor_id: int
-    contractor_name: str
+    contractor_name: Optional[str] = None
     contractor_email: Optional[str] = None
     client_name: Optional[str] = None
     period: Optional[str] = None
@@ -75,7 +75,7 @@ class TimesheetReadyForPayroll(BaseModel):
     """Timesheet that is approved and ready for payroll calculation"""
     id: int
     contractor_id: str
-    contractor_name: str
+    contractor_name: Optional[str] = None
     contractor_email: Optional[str] = None
     client_name: Optional[str] = None
     period: str

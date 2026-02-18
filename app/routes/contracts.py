@@ -195,10 +195,6 @@ def generate_contract(
         template_id=contract_data.template_id,
         contract_content=contract_data.contract_content,
         contract_date=datetime.utcnow().strftime("%Y-%m-%d"),
-        consultant_name=f"{contractor.first_name} {contractor.surname}",
-        client_name=cds_data.get("clientName", ""),
-        client_address=cds_data.get("clientAddress", ""),
-        job_title=cds_data.get("role", contractor.role),
         commencement_date=cds_data.get("startDate", contractor.start_date),
         contract_rate=cds_data.get("dayRate", contractor.candidate_pay_rate),
         working_location=cds_data.get("location", contractor.location),
@@ -447,17 +443,17 @@ def counter_sign_contract(
 
         pdf_url = upload_file(pdf_buffer, filename, folder)
 
-        # Add to contractor's other_documents
-        other_docs = list(contractor.other_documents or [])
-        other_docs.append({
-            "type": "signed_contract",
-            "name": f"Signed Contract - {contractor.first_name} {contractor.surname}",
-            "url": pdf_url,
-            "uploaded_at": datetime.utcnow().isoformat(),
-            "contract_id": contract.id
-        })
-        contractor.other_documents = other_docs
-        flag_modified(contractor, "other_documents")
+        # Add to contractor's documents child table
+        from app.models.contractor import ContractorDocument
+        doc = ContractorDocument(
+            contractor_id=contractor.id,
+            document_type="signed_contract",
+            name=f"Signed Contract - {contractor.first_name} {contractor.surname}",
+            url=pdf_url,
+            uploaded_at=datetime.utcnow(),
+            contract_id=contract.id,
+        )
+        db.add(doc)
     except Exception as pdf_error:
         db.rollback()
         print(f"Error: Failed to generate/upload signed contract PDF: {pdf_error}")

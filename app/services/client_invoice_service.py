@@ -125,14 +125,10 @@ def generate_client_invoice(
 
     # Create line items
     for payroll in payrolls:
-        contractor = db.query(Contractor).filter(Contractor.id == payroll.contractor_id).first()
-        contractor_name = _get_contractor_name(contractor) if contractor else "Unknown"
-
         line_item = ClientInvoiceLineItem(
             client_invoice_id=invoice.id,
             payroll_id=payroll.id,
             contractor_id=payroll.contractor_id,
-            contractor_name=contractor_name,
             description=f"Services for {period}",
             subtotal=round(payroll.invoice_total or 0, 2),
             vat_amount=round((payroll.invoice_total or 0) * vat_rate, 2),

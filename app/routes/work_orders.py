@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from app.database import get_db
-from app.models.work_order import WorkOrder, WorkOrderStatus
+from app.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderDocument
 from app.models.contractor import Contractor
 from app.models.third_party import ThirdParty
 from app.schemas.work_order import WorkOrderCreate, WorkOrderUpdate, WorkOrderResponse
@@ -250,21 +250,16 @@ async def upload_work_order_document(
             detail=f"Failed to upload document: {str(e)}"
         )
 
-    # Get existing documents or initialize empty list
-    documents = work_order.documents if work_order.documents else []
-
-    # Add new document
-    documents.append({
-        "type": document_type,
-        "filename": file.filename,
-        "url": file_url,
-        "uploaded_at": datetime.utcnow().isoformat()
-    })
-
-    # Update work order with new document
-    work_order.documents = documents
+    # Add document to child table
+    doc = WorkOrderDocument(
+        work_order_id=work_order.id,
+        document_type=document_type,
+        filename=file.filename,
+        url=file_url,
+        uploaded_at=datetime.utcnow(),
+    )
+    db.add(doc)
     db.commit()
-    db.refresh(work_order)
 
     return {"message": "Document uploaded successfully", "url": file_url}
 
@@ -279,25 +274,20 @@ async def delete_work_order_document(
     """
     Delete a document from a work order
     """
-    work_order = db.query(WorkOrder).filter(WorkOrder.id == work_order_id).first()
+    docs = (
+        db.query(WorkOrderDocument)
+        .filter(WorkOrderDocument.work_order_id == work_order_id)
+        .order_by(WorkOrderDocument.id)
+        .all()
+    )
 
-    if not work_order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Work order not found"
-        )
-
-    if not work_order.documents or document_index >= len(work_order.documents):
+    if document_index >= len(docs):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
 
-    # Remove document from list
-    documents = work_order.documents
-    documents.pop(document_index)
-    work_order.documents = documents
-
+    db.delete(docs[document_index])
     db.commit()
 
     return None
@@ -528,17 +518,17 @@ async def sign_work_order(
 
                 pdf_url = upload_file(pdf_buffer, filename, folder)
 
-                # Add to contractor's other_documents
-                other_docs = list(contractor.other_documents or [])
-                other_docs.append({
-                    "type": "signed_work_order",
-                    "name": f"Signed Work Order - {work_order.work_order_number}",
-                    "url": pdf_url,
-                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                    "work_order_id": work_order.id
-                })
-                contractor.other_documents = other_docs
-                flag_modified(contractor, "other_documents")
+                # Add to contractor's documents child table
+                from app.models.contractor import ContractorDocument
+                doc = ContractorDocument(
+                    contractor_id=contractor.id,
+                    document_type="signed_work_order",
+                    name=f"Signed Work Order - {work_order.work_order_number}",
+                    url=pdf_url,
+                    uploaded_at=datetime.now(timezone.utc),
+                    work_order_id=work_order.id,
+                )
+                db.add(doc)
 
                 db.commit()
                 print(f"Signed work order PDF saved to contractor documents: {pdf_url}")

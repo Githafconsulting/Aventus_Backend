@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
-from app.models.proposal import Proposal, ProposalStatus
+from app.models.proposal import Proposal, ProposalStatus, ProposalDeliverable, ProposalMilestone, ProposalPaymentItem, ProposalAttachment
 from app.models.client import Client
 from app.models.user import User, UserRole
 from app.schemas.proposal import ProposalCreate, ProposalUpdate, ProposalResponse
@@ -46,16 +46,40 @@ async def create_proposal(
     # Generate proposal number
     proposal_number = generate_proposal_number(db)
 
-    # Create proposal
+    # Create proposal — extract child table data
     proposal_dict = proposal_data.model_dump()
+    deliverables_data = proposal_dict.pop("deliverables", []) or []
+    milestones_data = proposal_dict.pop("milestones", []) or []
+    payment_schedule_data = proposal_dict.pop("payment_schedule", []) or []
+    attachments_data = proposal_dict.pop("attachments", []) or []
+
     proposal = Proposal(
         **proposal_dict,
         proposal_number=proposal_number,
         consultant_id=current_user.id,
-        client_company_name=client.company_name
     )
-
     db.add(proposal)
+    db.flush()
+
+    for i, d in enumerate(deliverables_data):
+        db.add(ProposalDeliverable(
+            proposal_id=proposal.id, title=d.get("title"), description=d.get("description"), sort_order=i,
+        ))
+    for i, m in enumerate(milestones_data):
+        db.add(ProposalMilestone(
+            proposal_id=proposal.id, title=m.get("name") or m.get("title"),
+            description=m.get("description"), due_date=m.get("date"), sort_order=i,
+        ))
+    for i, p in enumerate(payment_schedule_data):
+        db.add(ProposalPaymentItem(
+            proposal_id=proposal.id, description=p.get("phase") or p.get("description"),
+            amount=p.get("amount"), due_date=p.get("due_date"), percentage=p.get("percentage"), sort_order=i,
+        ))
+    for i, a in enumerate(attachments_data):
+        db.add(ProposalAttachment(
+            proposal_id=proposal.id, filename=a.get("filename"), url=a.get("url"),
+        ))
+
     db.commit()
     db.refresh(proposal)
 
@@ -102,19 +126,19 @@ async def get_proposals_summary(
     Much faster than full list - only fetches required columns.
     Supports pagination with page and limit parameters.
     """
-    # Only select the columns needed for dashboard display
+    # Only select the columns needed for dashboard display (JOIN for name columns)
     query = db.query(
         Proposal.id,
         Proposal.proposal_number,
         Proposal.client_id,
-        Proposal.client_company_name,
+        Client.company_name.label("client_company_name"),
         Proposal.project_name,
         Proposal.status,
         Proposal.total_amount,
         Proposal.currency,
         Proposal.created_at,
         Proposal.valid_until
-    )
+    ).outerjoin(Client, Proposal.client_id == Client.id)
 
     # Consultants can only see their own proposals
     if current_user.role == UserRole.CONSULTANT:
@@ -208,12 +232,55 @@ async def update_proposal(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Client not found"
             )
-        proposal.client_company_name = client.company_name
 
-    # Update fields
+    # Update fields — extract child table data
     update_data = proposal_data.model_dump(exclude_unset=True)
+    deliverables_data = update_data.pop("deliverables", None)
+    milestones_data = update_data.pop("milestones", None)
+    payment_schedule_data = update_data.pop("payment_schedule", None)
+    attachments_data = update_data.pop("attachments", None)
+
     for field, value in update_data.items():
         setattr(proposal, field, value)
+
+    # Replace child tables if provided
+    if deliverables_data is not None:
+        for d in list(proposal.proposal_deliverables):
+            db.delete(d)
+        db.flush()
+        for i, d in enumerate(deliverables_data):
+            db.add(ProposalDeliverable(
+                proposal_id=proposal.id, title=d.get("title"), description=d.get("description"), sort_order=i,
+            ))
+
+    if milestones_data is not None:
+        for m in list(proposal.proposal_milestones):
+            db.delete(m)
+        db.flush()
+        for i, m in enumerate(milestones_data):
+            db.add(ProposalMilestone(
+                proposal_id=proposal.id, title=m.get("name") or m.get("title"),
+                description=m.get("description"), due_date=m.get("date"), sort_order=i,
+            ))
+
+    if payment_schedule_data is not None:
+        for p in list(proposal.proposal_payment_items):
+            db.delete(p)
+        db.flush()
+        for i, p in enumerate(payment_schedule_data):
+            db.add(ProposalPaymentItem(
+                proposal_id=proposal.id, description=p.get("phase") or p.get("description"),
+                amount=p.get("amount"), due_date=p.get("due_date"), percentage=p.get("percentage"), sort_order=i,
+            ))
+
+    if attachments_data is not None:
+        for a in list(proposal.proposal_attachments):
+            db.delete(a)
+        db.flush()
+        for i, a in enumerate(attachments_data):
+            db.add(ProposalAttachment(
+                proposal_id=proposal.id, filename=a.get("filename"), url=a.get("url"),
+            ))
 
     db.commit()
     db.refresh(proposal)

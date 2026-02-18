@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from app.database import get_db
+from sqlalchemy import func as sa_func
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.models.contractor import Contractor
 from app.models.third_party import ThirdParty
@@ -62,8 +63,6 @@ async def request_quote_sheet(
         consultant_id=current_user.id,
         upload_token=upload_token,
         token_expiry=token_expiry,
-        contractor_name=contractor.full_name,
-        third_party_company_name=third_party.company_name
     )
 
     db.add(quote_sheet)
@@ -256,17 +255,17 @@ async def get_quote_sheets_summary(
     Much faster than full list - only fetches required columns.
     Supports pagination with page and limit parameters.
     """
-    # Only select the columns needed for dashboard display
+    # Only select the columns needed for dashboard display (JOIN for contractor name)
     query = db.query(
         QuoteSheet.id,
         QuoteSheet.contractor_id,
-        QuoteSheet.contractor_name,
+        sa_func.concat(Contractor.first_name, ' ', Contractor.surname).label("contractor_name"),
         QuoteSheet.third_party_company_name,
         QuoteSheet.status,
         QuoteSheet.total_invoice_amount,
         QuoteSheet.created_at,
         QuoteSheet.submitted_at
-    )
+    ).outerjoin(Contractor, QuoteSheet.contractor_id == Contractor.id)
 
     # Consultants can only see their own quote sheets
     if current_user.role == UserRole.CONSULTANT:
@@ -555,11 +554,22 @@ async def submit_quote_sheet_form(
             detail="Token has expired"
         )
 
-    # Update all form fields
+    # Split form data into parent fields and cost line fields
+    from app.utils.quote_sheet_helpers import split_form_data, create_cost_line_rows, flatten_cost_lines
     form_dict = form_data.model_dump(exclude_unset=True)
-    for field, value in form_dict.items():
+    parent_fields, cost_lines_data = split_form_data(form_dict)
+
+    # Update parent fields
+    for field, value in parent_fields.items():
         if hasattr(quote_sheet, field):
             setattr(quote_sheet, field, value)
+
+    # Replace cost lines
+    for cl in list(quote_sheet.cost_lines or []):
+        db.delete(cl)
+    db.flush()
+    for row in create_cost_line_rows(quote_sheet.id, cost_lines_data):
+        db.add(row)
 
     # Set issued date if not provided
     if not quote_sheet.issued_date:
@@ -567,9 +577,9 @@ async def submit_quote_sheet_form(
 
     # Generate PDF
     try:
-        # Prepare data for PDF generation
+        # Prepare data for PDF generation — flatten cost lines back to flat dict
         pdf_data = {
-            **form_dict,
+            **form_dict,  # Original flat form data (includes cost fields)
             'contractor_name': quote_sheet.contractor_name,
             'third_party_company_name': quote_sheet.third_party_company_name,
             'issued_date': quote_sheet.issued_date,

@@ -473,8 +473,16 @@ async def get_my_contracts(
             detail="User not found"
         )
 
-    # Return contracts signed array (or empty array if None)
-    contracts_signed = user.contracts_signed or []
+    # Return signed contracts from child table
+    contracts_signed = [
+        {
+            "contractor_id": sc.contractor_id,
+            "contractor_name": sc.contractor_name,
+            "contract_url": sc.contract_url,
+            "signed_date": sc.signed_date.isoformat() if sc.signed_date else None,
+        }
+        for sc in (user.signed_contracts or [])
+    ]
 
     return {
         "contracts": contracts_signed,

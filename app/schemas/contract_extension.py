@@ -100,7 +100,7 @@ class ContractExtensionListResponse(BaseModel):
 class ExtensionSigningPageResponse(BaseModel):
     """Public signing page response."""
     extension_id: str
-    contractor_name: str
+    contractor_name: Optional[str] = None
     client_name: Optional[str] = None
     original_end_date: date
     new_end_date: date

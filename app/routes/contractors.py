@@ -122,7 +122,6 @@ async def create_contractor_initial(
         email=contractor_data.email,
         phone=contractor_data.phone,
         consultant_id=current_user.id,
-        consultant_name=current_user.name,
         # Set dummy values for required fields (will be filled later)
         gender="Not specified",
         nationality="Not specified",
@@ -196,16 +195,17 @@ async def list_contractors_summary(
         Contractor.status,
         Contractor.created_at,
         Contractor.phone,
-        Contractor.consultant_name,
+        User.name.label("consultant_name"),
         Contractor.onboarding_route,
         Contractor.role,
         Contractor.cohf_status,
         Contractor.cohf_aventus_signed_date,
         Contractor.quote_sheet_status,
-        Contractor.client_name,
+        Client.company_name.label("client_name"),
         Contractor.third_party_id,
         Contractor.photo_document
-    )
+    ).outerjoin(User, Contractor.consultant_id == User.id
+    ).outerjoin(Client, Contractor.client_id == Client.id)
 
     if status_filter:
         query = query.filter(Contractor.status == status_filter)
@@ -981,25 +981,21 @@ async def submit_cds_form(
         contractor.third_party_id = form_data['thirdPartyId']
     if 'companyName' in form_data:
         contractor.company_name = form_data['companyName']
-        contractor.umbrella_company_name = form_data['companyName']  # Also update legacy
     if 'umbrellaCompanyName' in form_data:
         contractor.umbrella_company_name = form_data['umbrellaCompanyName']
     # Management Address
     if 'mgmtAddressLine1' in form_data:
         contractor.mgmt_address_line1 = form_data['mgmtAddressLine1']
-        contractor.registered_address = form_data['mgmtAddressLine1']  # Legacy
     if 'registeredAddress' in form_data:
-        contractor.registered_address = form_data['registeredAddress']
+        contractor.mgmt_address_line1 = form_data['registeredAddress']
     if 'mgmtAddressLine2' in form_data:
         contractor.mgmt_address_line2 = form_data['mgmtAddressLine2']
-        contractor.management_address_line2 = form_data['mgmtAddressLine2']  # Legacy
     if 'managementAddressLine2' in form_data:
-        contractor.management_address_line2 = form_data['managementAddressLine2']
+        contractor.mgmt_address_line2 = form_data['managementAddressLine2']
     if 'mgmtAddressLine3' in form_data:
         contractor.mgmt_address_line3 = form_data['mgmtAddressLine3']
-        contractor.management_address_line3 = form_data['mgmtAddressLine3']  # Legacy
     if 'managementAddressLine3' in form_data:
-        contractor.management_address_line3 = form_data['managementAddressLine3']
+        contractor.mgmt_address_line3 = form_data['managementAddressLine3']
     if 'mgmtAddressLine4' in form_data:
         contractor.mgmt_address_line4 = form_data['mgmtAddressLine4']
     if 'mgmtCountry' in form_data:
@@ -1011,21 +1007,18 @@ async def submit_cds_form(
     # Management Banking
     if 'mgmtBankName' in form_data:
         contractor.mgmt_bank_name = form_data['mgmtBankName']
-        contractor.bank_name = form_data['mgmtBankName']  # Legacy
     if 'bankName' in form_data:
-        contractor.bank_name = form_data['bankName']
+        contractor.mgmt_bank_name = form_data['bankName']
     if 'mgmtAccountName' in form_data:
         contractor.mgmt_account_name = form_data['mgmtAccountName']
     if 'mgmtAccountNumber' in form_data:
         contractor.mgmt_account_number = form_data['mgmtAccountNumber']
-        contractor.account_number = form_data['mgmtAccountNumber']  # Legacy
     if 'accountNumber' in form_data:
-        contractor.account_number = form_data['accountNumber']
+        contractor.mgmt_account_number = form_data['accountNumber']
     if 'mgmtIBANNumber' in form_data:
         contractor.mgmt_iban_number = form_data['mgmtIBANNumber']
-        contractor.iban_number = form_data['mgmtIBANNumber']  # Legacy
     if 'ibanNumber' in form_data:
-        contractor.iban_number = form_data['ibanNumber']
+        contractor.mgmt_iban_number = form_data['ibanNumber']
     if 'mgmtSwiftBic' in form_data:
         contractor.mgmt_swift_bic = form_data['mgmtSwiftBic']
 
@@ -1034,8 +1027,6 @@ async def submit_cds_form(
     # ==========================================
     if 'clientId' in form_data:
         contractor.client_id = form_data['clientId']
-    if 'clientName' in form_data:
-        contractor.client_name = form_data['clientName']
     if 'location' in form_data:
         contractor.location = form_data['location']
     if 'role' in form_data:
@@ -1053,23 +1044,21 @@ async def submit_cds_form(
         contractor.rate_type = form_data['rateType']
     if 'chargeRateMonth' in form_data:
         contractor.charge_rate_month = form_data['chargeRateMonth']
-        contractor.client_charge_rate = form_data['chargeRateMonth']  # Legacy
     if 'grossSalary' in form_data:
         contractor.gross_salary = form_data['grossSalary']
-        contractor.candidate_pay_rate = form_data['grossSalary']  # Legacy
     if 'chargeRateDay' in form_data:
         contractor.charge_rate_day = form_data['chargeRateDay']
     if 'dayRate' in form_data:
         contractor.day_rate = form_data['dayRate']
-    # Legacy fields
+    # Legacy field names — redirect to canonical columns
     if 'clientChargeRate' in form_data:
-        contractor.client_charge_rate = form_data['clientChargeRate']
+        contractor.charge_rate_month = form_data['clientChargeRate']
     if 'candidatePayRate' in form_data:
-        contractor.candidate_pay_rate = form_data['candidatePayRate']
+        contractor.gross_salary = form_data['candidatePayRate']
     if 'projectName' in form_data:
         contractor.project_name = form_data['projectName']
     if 'candidateBasicSalary' in form_data:
-        contractor.candidate_basic_salary = form_data['candidateBasicSalary']
+        contractor.gross_salary = form_data['candidateBasicSalary']
     if 'businessType' in form_data:
         contractor.business_type = form_data['businessType']
 
@@ -1099,16 +1088,14 @@ async def submit_cds_form(
     # Client contacts
     if 'clientContact1' in form_data:
         contractor.client_contact1 = form_data['clientContact1']
-        contractor.client_contact = form_data['clientContact1']  # Legacy
     if 'clientContact' in form_data:
-        contractor.client_contact = form_data['clientContact']
+        contractor.client_contact1 = form_data['clientContact']
     if 'clientContact2' in form_data:
         contractor.client_contact2 = form_data['clientContact2']
     if 'invoiceEmail1' in form_data:
         contractor.invoice_email1 = form_data['invoiceEmail1']
-        contractor.invoice_email = form_data['invoiceEmail1']  # Legacy
     if 'invoiceEmail' in form_data:
-        contractor.invoice_email = form_data['invoiceEmail']
+        contractor.invoice_email1 = form_data['invoiceEmail']
     if 'invoiceEmail2' in form_data:
         contractor.invoice_email2 = form_data['invoiceEmail2']
     # Address
@@ -1131,7 +1118,6 @@ async def submit_cds_form(
         contractor.po_number = form_data['poNumber']
     if 'taxNumber' in form_data:
         contractor.tax_number = form_data['taxNumber']
-        contractor.invoice_tax_number = form_data['taxNumber']  # Legacy
     if 'invoiceTaxNumber' in form_data:
         contractor.invoice_tax_number = form_data['invoiceTaxNumber']
     if 'contractorPayFrequency' in form_data:
@@ -1183,12 +1169,12 @@ async def submit_cds_form(
     if 'securityDeposit' in form_data:
         contractor.security_deposit = form_data['securityDeposit']
     if 'laptopProvider' in form_data:
-        contractor.laptop_provider = form_data['laptopProvider']
+        contractor.laptop_provided_by = form_data['laptopProvider']
     if 'otherNotes' in form_data:
-        contractor.other_notes = form_data['otherNotes']
+        contractor.any_notes = form_data['otherNotes']
     # Summary calculations
     if 'contractorTotalFixedCosts' in form_data:
-        contractor.contractor_total_fixed_costs = form_data['contractorTotalFixedCosts']
+        contractor.total_contractor_fixed_costs = form_data['contractorTotalFixedCosts']
     if 'estimatedMonthlyGP' in form_data:
         contractor.estimated_monthly_gp = form_data['estimatedMonthlyGP']
     # Pay details (moved to contractor section)
@@ -1396,7 +1382,7 @@ async def update_contract_data(
 
     # Update direct contractor fields
     direct_fields = [
-        "first_name", "surname", "client_name", "role", "location",
+        "first_name", "surname", "role", "location",
         "duration", "start_date", "candidate_pay_rate", "currency"
     ]
     for field in direct_fields:
@@ -1461,8 +1447,8 @@ async def update_work_order_data(
 
     # String-only fields (no type conversion needed)
     string_fields = [
-        "contractor_name", "client_name", "role", "location",
-        "duration", "charge_rate", "pay_rate", "currency", "project_name"
+        "role", "location",
+        "duration", "charge_rate", "pay_rate", "currency"
     ]
     # Date fields that need parsing for WorkOrder (DateTime columns)
     date_fields = ["start_date", "end_date"]
@@ -1799,14 +1785,9 @@ async def approve_contractor_work_order(
         title=f"Work Order - {contractor.role}",
         description=f"Work order for {contractor.first_name} {contractor.surname} at {client.company_name}",
         location=contractor.location or "",
-        contractor_name=f"{contractor.first_name} {contractor.surname}",
-        client_name=client.company_name,
-        project_name=contractor.project_name,
         role=contractor.role,
         duration=contractor.duration,
         currency=contractor.currency,
-        business_type=contractor.business_type,
-        umbrella_company_name=contractor.umbrella_company_name,
         start_date=datetime.fromisoformat(contractor.start_date) if contractor.start_date else datetime.now(),
         end_date=datetime.fromisoformat(contractor.end_date) if contractor.end_date else None,
         charge_rate=contractor.client_charge_rate,
@@ -1924,14 +1905,9 @@ async def send_work_order_to_client_endpoint(
         title=f"Work Order - {contractor.role}",
         description=f"Work order for {contractor.first_name} {contractor.surname} at {client.company_name}",
         location=contractor.location or "",
-        contractor_name=f"{contractor.first_name} {contractor.surname}",
-        client_name=client.company_name,
-        project_name=contractor.project_name,
         role=contractor.role,
         duration=contractor.duration,
         currency=contractor.currency,
-        business_type=contractor.business_type,
-        umbrella_company_name=contractor.umbrella_company_name,
         start_date=datetime.fromisoformat(contractor.start_date) if contractor.start_date else datetime.now(),
         end_date=datetime.fromisoformat(contractor.end_date) if contractor.end_date else None,
         charge_rate=contractor.client_charge_rate,
@@ -2631,16 +2607,15 @@ async def get_contractor_documents(
             "uploaded_date": contractor.third_party_response_received_date
         })
 
-    # Add other documents (including signed COHF)
-    if contractor.other_documents:
-        for idx, doc in enumerate(contractor.other_documents):
-            doc_type = doc.get("type", "other")
-            documents.append({
-                "document_name": doc.get("name", f"Other Document {idx + 1}"),
-                "document_type": doc_type,
-                "document_url": doc.get("data") or doc.get("url"),
-                "uploaded_date": doc.get("uploaded_at") or contractor.documents_uploaded_date
-            })
+    # Add other documents from child table (including signed COHF, contracts, work orders)
+    for idx, doc in enumerate(contractor.contractor_documents or []):
+        doc_type = doc.document_type or "other"
+        documents.append({
+            "document_name": doc.name or f"Other Document {idx + 1}",
+            "document_type": doc_type,
+            "document_url": doc.url,
+            "uploaded_date": doc.uploaded_at.isoformat() if doc.uploaded_at else None
+        })
 
     # Add signed COHF document if available and not already in other_documents
     if contractor.cohf_signed_document:
@@ -2911,8 +2886,7 @@ async def request_quote_sheet(
         id=str(uuid.uuid4()),
         contractor_id=contractor_id,
         third_party_id=third_party_id_to_save,  # Save third party ID if selected from dropdown
-        contractor_name=f"{contractor.first_name} {contractor.surname}",
-        third_party_company_name=third_party_company_name,
+        third_party_company_name=third_party_company_name,  # Keep: email-domain fallback when no third_party_id
         consultant_id=current_user.id,
         upload_token=upload_token,
         token_expiry=token_expiry,
@@ -3005,8 +2979,6 @@ async def send_third_party_request(
         consultant_id=current_user.id,
         upload_token=upload_token,
         token_expiry=token_expiry,
-        contractor_name=f"{contractor.first_name} {contractor.surname}",
-        third_party_company_name=third_party.company_name,
         status=QuoteSheetStatus.PENDING
     )
 
@@ -3494,15 +3466,16 @@ async def superadmin_sign_contract(
         pdf_buffer.seek(0)  # Reset buffer for second upload
         superadmin_file_url = upload_file(pdf_buffer, superadmin_filename, superadmin_folder)
 
-        # Update superadmin's contracts_signed array
-        contracts_signed = superadmin.contracts_signed or []
-        contracts_signed.append({
-            'contractor_id': contractor.id,
-            'contractor_name': f"{contractor.first_name} {contractor.surname}",
-            'contract_url': superadmin_file_url,
-            'signed_date': contractor.signed_date.isoformat()
-        })
-        superadmin.contracts_signed = contracts_signed
+        # Add to superadmin's signed contracts child table
+        from app.models.user import UserSignedContract
+        signed = UserSignedContract(
+            user_id=superadmin.id,
+            contractor_id=contractor.id,
+            contractor_name=f"{contractor.first_name} {contractor.surname}",
+            contract_url=superadmin_file_url,
+            signed_date=contractor.signed_date,
+        )
+        db.add(signed)
 
         # Update contractor with signed contract URL
         contractor.signed_contract_url = contractor_file_url
@@ -4220,16 +4193,17 @@ async def sign_cohf(
 
         contractor.cohf_signed_document = pdf_url
 
-        # Add to other_documents array so it appears in document list
-        other_docs = contractor.other_documents or []
-        other_docs.append({
-            "name": f"COHF - Signed by {signer_name}",
-            "url": pdf_url,
-            "type": "cohf_signed",
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            "signed_by": signer_name
-        })
-        contractor.other_documents = other_docs
+        # Add to contractor documents child table
+        from app.models.contractor import ContractorDocument
+        doc = ContractorDocument(
+            contractor_id=contractor.id,
+            document_type="cohf_signed",
+            name=f"COHF - Signed by {signer_name}",
+            url=pdf_url,
+            uploaded_at=datetime.now(timezone.utc),
+            signed_by=signer_name,
+        )
+        db.add(doc)
 
     except Exception as e:
         print(f"Error generating/uploading signed COHF PDF: {e}")

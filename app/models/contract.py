@@ -52,10 +52,6 @@ class Contract(Base):
 
     # Contract Details (auto-filled from CDS)
     contract_date = Column(String, nullable=True)
-    consultant_name = Column(String, nullable=True)
-    client_name = Column(String, nullable=True)
-    client_address = Column(Text, nullable=True)
-    job_title = Column(String, nullable=True)
     commencement_date = Column(String, nullable=True)
     contract_rate = Column(String, nullable=True)
     working_location = Column(String, nullable=True)
@@ -102,6 +98,58 @@ class Contract(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Properties — resolved from FK relationships (Phase 6)
+    @property
+    def consultant_name(self):
+        try:
+            c = self.contractor
+            return f"{c.first_name} {c.surname}" if c else None
+        except Exception:
+            return None
+
+    @consultant_name.setter
+    def consultant_name(self, value):
+        pass
+
+    @property
+    def client_name(self):
+        try:
+            c = self.contractor
+            return c.client.company_name if c and c.client else None
+        except Exception:
+            return None
+
+    @client_name.setter
+    def client_name(self, value):
+        pass
+
+    @property
+    def client_address(self):
+        try:
+            c = self.contractor
+            if c and c.client:
+                client = c.client
+                parts = [p for p in [client.address_line1, client.address_line2, client.address_line3, client.address_line4, client.country] if p]
+                return ", ".join(parts) if parts else None
+        except Exception:
+            pass
+        return None
+
+    @client_address.setter
+    def client_address(self, value):
+        pass
+
+    @property
+    def job_title(self):
+        try:
+            return self.contractor.role if self.contractor else None
+        except Exception:
+            return None
+
+    @job_title.setter
+    def job_title(self, value):
+        pass
 
     # Relationships
     contractor = relationship("Contractor", back_populates="contracts")

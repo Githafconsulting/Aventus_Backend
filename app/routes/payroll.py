@@ -436,8 +436,6 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         timesheet_id=timesheet_id,
         contractor_id=contractor.id,
         period=period,
-        client_name=info["client_name"],
-        third_party_name=info["third_party_name"],
         rate_type=rate_type,
         currency=info["currency"],
         monthly_rate=monthly_rate,
@@ -467,7 +465,6 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
         vat_rate=vat_rate,
         vat_amount=vat_amount,
         total_payable=total_invoice,
-        country=info["country"],
         status=PayrollStatus.CALCULATED,
         calculated_at=datetime.utcnow(),
     )
@@ -768,11 +765,8 @@ def calculate_payroll(
 
         # Basic Info
         period=period,
-        client_name=info["client_name"],
-        third_party_name=info["third_party_name"],
         currency=info["currency"],
         rate_type=rate_type,
-        country=info["country"],
 
         # Basic Calculation
         monthly_rate=monthly_rate,

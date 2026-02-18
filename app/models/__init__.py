@@ -1,13 +1,13 @@
-from app.models.user import User
-from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute
+from app.models.user import User, UserSignedContract
+from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute, ContractorDocument
 from app.models.timesheet import Timesheet
 from app.models.contract import Contract, ContractTemplate, ContractStatus
-from app.models.work_order import WorkOrder, WorkOrderStatus
-from app.models.client import Client
-from app.models.third_party import ThirdParty
+from app.models.work_order import WorkOrder, WorkOrderStatus, WorkOrderDocument
+from app.models.client import Client, ClientDocument, ClientProject
+from app.models.third_party import ThirdParty, ThirdPartyDocument
 from app.models.template import Template, TemplateType
-from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
-from app.models.proposal import Proposal, ProposalStatus
+from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus, QuoteSheetDocument, QuoteSheetCostLine
+from app.models.proposal import Proposal, ProposalStatus, ProposalDeliverable, ProposalMilestone, ProposalPaymentItem, ProposalAttachment
 from app.models.payroll import Payroll, PayrollStatus
 from app.models.payslip import Payslip, PayslipStatus
 from app.models.invoice import Invoice, InvoiceStatus, InvoicePayment
@@ -19,11 +19,19 @@ from app.models.payroll_batch import PayrollBatch, BatchStatus
 from app.models.client_invoice import ClientInvoice, ClientInvoiceStatus, ClientInvoiceLineItem, ClientInvoicePayment
 
 __all__ = [
-    "User", "Contractor", "ContractorStatus", "OnboardingRoute", "Timesheet",
-    "Contract", "ContractTemplate", "ContractStatus", "WorkOrder", "WorkOrderStatus",
-    "Client", "ThirdParty", "Template", "TemplateType", "QuoteSheet", "QuoteSheetStatus",
-    "Proposal", "ProposalStatus", "Payroll", "PayrollStatus",
-    "Payslip", "PayslipStatus", "Invoice", "InvoiceStatus", "InvoicePayment",
+    "User", "UserSignedContract",
+    "Contractor", "ContractorStatus", "OnboardingRoute", "ContractorDocument",
+    "Timesheet",
+    "Contract", "ContractTemplate", "ContractStatus",
+    "WorkOrder", "WorkOrderStatus", "WorkOrderDocument",
+    "Client", "ClientDocument", "ClientProject",
+    "ThirdParty", "ThirdPartyDocument",
+    "Template", "TemplateType",
+    "QuoteSheet", "QuoteSheetStatus", "QuoteSheetDocument",
+    "Proposal", "ProposalStatus", "ProposalDeliverable", "ProposalMilestone", "ProposalPaymentItem", "ProposalAttachment",
+    "Payroll", "PayrollStatus",
+    "Payslip", "PayslipStatus",
+    "Invoice", "InvoiceStatus", "InvoicePayment",
     "Notification", "NotificationType",
     "OffboardingRecord", "OffboardingReason", "OffboardingStatus",
     "ContractExtension", "ExtensionStatus",

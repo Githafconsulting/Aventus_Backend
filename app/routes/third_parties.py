@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile,
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
-from app.models.third_party import ThirdParty
+from app.models.third_party import ThirdParty, ThirdPartyDocument
 from app.models.contractor import Contractor
 from app.models.work_order import WorkOrder
 from app.models.quote_sheet import QuoteSheet
@@ -226,21 +226,16 @@ async def upload_third_party_document(
             detail=f"Failed to upload document: {str(e)}"
         )
 
-    # Get existing documents or initialize empty list
-    documents = third_party.documents if third_party.documents else []
-
-    # Add new document
-    documents.append({
-        "type": document_type,
-        "filename": file.filename,
-        "url": file_url,
-        "uploaded_at": datetime.utcnow().isoformat()
-    })
-
-    # Update third party with new document
-    third_party.documents = documents
+    # Add document to child table
+    doc = ThirdPartyDocument(
+        third_party_id=third_party.id,
+        document_type=document_type,
+        filename=file.filename,
+        url=file_url,
+        uploaded_at=datetime.utcnow(),
+    )
+    db.add(doc)
     db.commit()
-    db.refresh(third_party)
 
     return {"message": "Document uploaded successfully", "url": file_url}
 
@@ -255,25 +250,20 @@ async def delete_third_party_document(
     """
     Delete a document from a third party company (Admin/Superadmin only)
     """
-    third_party = db.query(ThirdParty).filter(ThirdParty.id == third_party_id).first()
+    docs = (
+        db.query(ThirdPartyDocument)
+        .filter(ThirdPartyDocument.third_party_id == third_party_id)
+        .order_by(ThirdPartyDocument.id)
+        .all()
+    )
 
-    if not third_party:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Third party company not found"
-        )
-
-    if not third_party.documents or document_index >= len(third_party.documents):
+    if document_index >= len(docs):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
 
-    # Remove document from list
-    documents = third_party.documents
-    documents.pop(document_index)
-    third_party.documents = documents
-
+    db.delete(docs[document_index])
     db.commit()
 
     return None

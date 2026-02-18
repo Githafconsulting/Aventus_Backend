@@ -28,11 +28,8 @@ class Payroll(Base):
 
     # Basic Info
     period = Column(String, nullable=True)  # e.g., "November 2024"
-    client_name = Column(String, nullable=True)
-    third_party_name = Column(String, nullable=True)  # e.g., FNRCO, Auxillium
     currency = Column(String(10), default="AED")
     rate_type = Column(SQLEnum(RateType), default=RateType.MONTHLY)
-    country = Column(String, nullable=True)  # For VAT calculation (UAE=5%, Saudi=15%)
 
     # Basic Calculation - Monthly Rate
     monthly_rate = Column(Float, nullable=True)  # From CDS
@@ -59,8 +56,7 @@ class Payroll(Base):
     # Net Salary
     net_salary = Column(Float, nullable=True)  # Final net salary calculation
 
-    # 3rd Party Accruals (stored as JSON for flexibility)
-    accruals = Column(JSON, nullable=True)  # {"gosi": 900, "salary_transfer": 8.33, ...}
+    # 3rd Party Accruals
     total_accruals = Column(Float, default=0)  # Sum of all accruals
 
     # Individual accrual fields (for common ones)
@@ -106,6 +102,42 @@ class Payroll(Base):
     paid_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Properties — resolved from FK relationships (Phase 6)
+    @property
+    def client_name(self):
+        try:
+            c = self.contractor
+            return c.client.company_name if c and c.client else None
+        except Exception:
+            return None
+
+    @client_name.setter
+    def client_name(self, value):
+        pass
+
+    @property
+    def third_party_name(self):
+        try:
+            c = self.contractor
+            return c.third_party.company_name if c and c.third_party else None
+        except Exception:
+            return None
+
+    @third_party_name.setter
+    def third_party_name(self, value):
+        pass
+
+    @property
+    def country(self):
+        try:
+            return self.contractor.onboarding_route if self.contractor else None
+        except Exception:
+            return None
+
+    @country.setter
+    def country(self, value):
+        pass
 
     # Relationships
     timesheet = relationship("Timesheet", back_populates="payroll")

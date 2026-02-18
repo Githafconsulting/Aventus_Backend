@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Float, JSON, Enum as SQLEnum, Text
+import sqlalchemy as sa
+from sqlalchemy import Column, String, DateTime, ForeignKey, Float, Integer, JSON, Enum as SQLEnum, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 import uuid
@@ -30,12 +31,10 @@ class QuoteSheet(Base):
     token_expiry = Column(DateTime, nullable=False)
 
     # Basic Quote Sheet Details
-    contractor_name = Column(String, nullable=True)
-    third_party_company_name = Column(String, nullable=True)
+    third_party_company_name = Column(String, nullable=True)  # Kept: can be set from email-domain when no third_party_id
     issued_date = Column(String, nullable=True)
 
     # ===== (A) Employee Contract Information =====
-    employee_name = Column(String, nullable=True)
     role = Column(String, nullable=True)
     date_of_hiring = Column(String, nullable=True)
     nationality = Column(String, nullable=True)
@@ -51,115 +50,16 @@ class QuoteSheet(Base):
     aed_to_sar = Column(Float, nullable=True)
     gross_salary = Column(Float, nullable=True)
 
-    # ===== (C) Employee Cost (One Time / Annual / Monthly) =====
-    # Vacation
-    vacation_one_time = Column(Float, nullable=True)
-    vacation_annual = Column(Float, nullable=True)
-    vacation_monthly = Column(Float, nullable=True)
-    # Flight
-    flight_one_time = Column(Float, nullable=True)
-    flight_annual = Column(Float, nullable=True)
-    flight_monthly = Column(Float, nullable=True)
-    # EOSB
-    eosb_one_time = Column(Float, nullable=True)
-    eosb_annual = Column(Float, nullable=True)
-    eosb_monthly = Column(Float, nullable=True)
-    # GOSI
-    gosi_one_time = Column(Float, nullable=True)
-    gosi_annual = Column(Float, nullable=True)
-    gosi_monthly = Column(Float, nullable=True)
-    # Medical
-    medical_one_time = Column(Float, nullable=True)
-    medical_annual = Column(Float, nullable=True)
-    medical_monthly = Column(Float, nullable=True)
-    # Exit Re-Entry
-    exit_reentry_one_time = Column(Float, nullable=True)
-    exit_reentry_annual = Column(Float, nullable=True)
-    exit_reentry_monthly = Column(Float, nullable=True)
-    # Salary Transfer
-    salary_transfer_one_time = Column(Float, nullable=True)
-    salary_transfer_annual = Column(Float, nullable=True)
-    salary_transfer_monthly = Column(Float, nullable=True)
-    # Sick Leave
-    sick_leave_one_time = Column(Float, nullable=True)
-    sick_leave_annual = Column(Float, nullable=True)
-    sick_leave_monthly = Column(Float, nullable=True)
-    # Employee Cost Totals
+    # ===== Section Cost Totals (cached) =====
     employee_cost_one_time_total = Column(Float, nullable=True)
     employee_cost_annual_total = Column(Float, nullable=True)
     employee_cost_monthly_total = Column(Float, nullable=True)
-
-    # ===== (D) Family Cost =====
-    family_medical_one_time = Column(Float, nullable=True)
-    family_medical_annual = Column(Float, nullable=True)
-    family_medical_monthly = Column(Float, nullable=True)
-    family_flight_one_time = Column(Float, nullable=True)
-    family_flight_annual = Column(Float, nullable=True)
-    family_flight_monthly = Column(Float, nullable=True)
-    family_exit_one_time = Column(Float, nullable=True)
-    family_exit_annual = Column(Float, nullable=True)
-    family_exit_monthly = Column(Float, nullable=True)
-    family_joining_one_time = Column(Float, nullable=True)
-    family_joining_annual = Column(Float, nullable=True)
-    family_joining_monthly = Column(Float, nullable=True)
-    family_visa_one_time = Column(Float, nullable=True)
-    family_visa_annual = Column(Float, nullable=True)
-    family_visa_monthly = Column(Float, nullable=True)
-    family_levy_one_time = Column(Float, nullable=True)
-    family_levy_annual = Column(Float, nullable=True)
-    family_levy_monthly = Column(Float, nullable=True)
-    # Family Cost Totals
     family_cost_one_time_total = Column(Float, nullable=True)
     family_cost_annual_total = Column(Float, nullable=True)
     family_cost_monthly_total = Column(Float, nullable=True)
-
-    # ===== (E) Government Related Charges =====
-    sce_one_time = Column(Float, nullable=True)
-    sce_annual = Column(Float, nullable=True)
-    sce_monthly = Column(Float, nullable=True)
-    medical_test_one_time = Column(Float, nullable=True)
-    medical_test_annual = Column(Float, nullable=True)
-    medical_test_monthly = Column(Float, nullable=True)
-    visa_cost_one_time = Column(Float, nullable=True)
-    visa_cost_annual = Column(Float, nullable=True)
-    visa_cost_monthly = Column(Float, nullable=True)
-    ewakala_one_time = Column(Float, nullable=True)
-    ewakala_annual = Column(Float, nullable=True)
-    ewakala_monthly = Column(Float, nullable=True)
-    chamber_mofa_one_time = Column(Float, nullable=True)
-    chamber_mofa_annual = Column(Float, nullable=True)
-    chamber_mofa_monthly = Column(Float, nullable=True)
-    iqama_one_time = Column(Float, nullable=True)
-    iqama_annual = Column(Float, nullable=True)
-    iqama_monthly = Column(Float, nullable=True)
-    saudi_admin_one_time = Column(Float, nullable=True)
-    saudi_admin_annual = Column(Float, nullable=True)
-    saudi_admin_monthly = Column(Float, nullable=True)
-    ajeer_one_time = Column(Float, nullable=True)
-    ajeer_annual = Column(Float, nullable=True)
-    ajeer_monthly = Column(Float, nullable=True)
-    # Government Cost Totals
     govt_cost_one_time_total = Column(Float, nullable=True)
     govt_cost_annual_total = Column(Float, nullable=True)
     govt_cost_monthly_total = Column(Float, nullable=True)
-
-    # ===== (F) Mobilization Cost =====
-    visa_processing_one_time = Column(Float, nullable=True)
-    visa_processing_annual = Column(Float, nullable=True)
-    visa_processing_monthly = Column(Float, nullable=True)
-    recruitment_one_time = Column(Float, nullable=True)
-    recruitment_annual = Column(Float, nullable=True)
-    recruitment_monthly = Column(Float, nullable=True)
-    joining_ticket_one_time = Column(Float, nullable=True)
-    joining_ticket_annual = Column(Float, nullable=True)
-    joining_ticket_monthly = Column(Float, nullable=True)
-    relocation_one_time = Column(Float, nullable=True)
-    relocation_annual = Column(Float, nullable=True)
-    relocation_monthly = Column(Float, nullable=True)
-    other_cost_one_time = Column(Float, nullable=True)
-    other_cost_annual = Column(Float, nullable=True)
-    other_cost_monthly = Column(Float, nullable=True)
-    # Mobilization Cost Totals
     mobilization_one_time_total = Column(Float, nullable=True)
     mobilization_annual_total = Column(Float, nullable=True)
     mobilization_monthly_total = Column(Float, nullable=True)
@@ -177,7 +77,7 @@ class QuoteSheet(Base):
     # Documents
     document_url = Column(String, nullable=True)  # Generated PDF URL
     document_filename = Column(String, nullable=True)
-    additional_documents = Column(JSON, default=list)
+    # Documents
 
     # Status
     status = Column(SQLEnum(QuoteSheetStatus), default=QuoteSheetStatus.PENDING, nullable=False)
@@ -192,7 +92,80 @@ class QuoteSheet(Base):
     reviewed_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Properties — resolved from FK relationships (Phase 6)
+    @property
+    def contractor_name(self):
+        try:
+            c = self.contractor
+            return f"{c.first_name} {c.surname}" if c else None
+        except Exception:
+            return None
+
+    @contractor_name.setter
+    def contractor_name(self, value):
+        pass
+
+    @property
+    def employee_name(self):
+        try:
+            c = self.contractor
+            return f"{c.first_name} {c.surname}" if c else None
+        except Exception:
+            return None
+
+    @employee_name.setter
+    def employee_name(self, value):
+        pass
+
     # Relationships
     contractor = relationship("Contractor", back_populates="quote_sheets")
     third_party = relationship("ThirdParty", backref="quote_sheets")
     consultant = relationship("User", backref="quote_sheets")
+    cost_lines = relationship("QuoteSheetCostLine", back_populates="quote_sheet", cascade="all, delete-orphan")
+    quote_sheet_documents = relationship("QuoteSheetDocument", back_populates="quote_sheet", cascade="all, delete-orphan")
+
+    @property
+    def additional_documents(self):
+        """Backward-compat property: serialize child docs as list of dicts."""
+        return [
+            {
+                "filename": d.filename,
+                "url": d.url,
+                "type": d.document_type,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            }
+            for d in (self.quote_sheet_documents or [])
+        ]
+
+
+class QuoteSheetDocument(Base):
+    __tablename__ = "quote_sheet_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quote_sheet_id = Column(String, ForeignKey("quote_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String, nullable=True)
+    url = Column(String, nullable=False)
+    document_type = Column(String, nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    quote_sheet = relationship("QuoteSheet", back_populates="quote_sheet_documents")
+
+
+class QuoteSheetCostLine(Base):
+    __tablename__ = "quote_sheet_cost_lines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quote_sheet_id = Column(String, ForeignKey("quote_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    section = Column(String, nullable=False)      # employee, family, government, mobilization
+    category = Column(String, nullable=False)      # vacation, eosb, gosi, etc.
+    label = Column(String, nullable=False)         # Human-readable label
+    one_time = Column(Float, default=0)
+    annual = Column(Float, default=0)
+    monthly = Column(Float, default=0)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    quote_sheet = relationship("QuoteSheet", back_populates="cost_lines")
+
+    __table_args__ = (
+        sa.UniqueConstraint("quote_sheet_id", "category", name="uq_qs_cost_line_category"),
+    )

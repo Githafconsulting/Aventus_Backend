@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, DateTime, Enum as SQLEnum, JSON, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Enum as SQLEnum, JSON, Text, ForeignKey, Integer
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -137,7 +138,6 @@ class Contractor(Base):
     id_back_document = Column(String, nullable=True)
     emirates_id_document = Column(String, nullable=True)
     degree_document = Column(String, nullable=True)
-    other_documents = Column(JSON, nullable=True)  # Array of additional documents
 
     # Client Contract Upload Workflow
     contract_upload_token = Column(String, unique=True, nullable=True, index=True)
@@ -162,7 +162,6 @@ class Contractor(Base):
 
     # Consultant Tracking
     consultant_id = Column(String, ForeignKey("users.id"), nullable=True)  # User ID of consultant who created
-    consultant_name = Column(String, nullable=True)
 
     # Costing Sheet Data (filled by consultant)
     costing_sheet_data = Column(JSON, nullable=True)
@@ -179,8 +178,7 @@ class Contractor(Base):
     marital_status = Column(String, nullable=True)  # "Single", "Married", "Divorced", "Widowed"
     number_of_children = Column(String, nullable=True)
     # Address fields (renamed for clarity)
-    address_line1 = Column(String, nullable=True)  # NEW: Primary address line
-    home_address = Column(String, nullable=False)  # Legacy - keep for backward compatibility
+    address_line1 = Column(String, nullable=True)  # Primary address line
     address_line2 = Column(String, nullable=True)
     address_line3 = Column(String, nullable=True)
     address_line4 = Column(String, nullable=True)
@@ -199,14 +197,8 @@ class Contractor(Base):
     business_type = Column(String, nullable=True)  # "3RD Party", "Freelancer", "Aventus"
     third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=True)  # ID of third party company if business_type is "3RD Party"
     umbrella_company_name = Column(String, nullable=True)
-    registered_address = Column(String, nullable=True)
-    management_address_line2 = Column(String, nullable=True)
-    management_address_line3 = Column(String, nullable=True)
     company_vat_no = Column(String, nullable=True)
     company_name = Column(String, nullable=True)
-    bank_name = Column(String, nullable=True)
-    account_number = Column(String, nullable=True)
-    iban_number = Column(String, nullable=True)
     company_reg_no = Column(String, nullable=True)
     # NEW Management Company Fields
     mgmt_address_line1 = Column(String, nullable=True)
@@ -222,7 +214,6 @@ class Contractor(Base):
 
     # Placement Details
     client_id = Column(String, ForeignKey("clients.id"), nullable=True)  # ID of the client company
-    client_name = Column(String, nullable=True)
     project_name = Column(String, nullable=True)
     role = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
@@ -238,12 +229,7 @@ class Contractor(Base):
     # Day rate fields
     charge_rate_day = Column(String, nullable=True)
     day_rate = Column(String, nullable=True)
-    # Legacy fields (keep for backward compatibility)
-    client_charge_rate = Column(String, nullable=True)
-    candidate_pay_rate = Column(String, nullable=True)
     candidate_pay_rate_period = Column(String, nullable=True)  # "day" or "month"
-    candidate_basic_salary = Column(String, nullable=True)
-    contractor_costs = Column(String, nullable=True)
 
     # Monthly Costs
     management_company_charges = Column(String, nullable=True)
@@ -272,8 +258,6 @@ class Contractor(Base):
     any_notes = Column(Text, nullable=True)
     upfront_invoices = Column(String, nullable=True)
     security_deposit = Column(String, nullable=True)
-    laptop_provider = Column(String, nullable=True)  # Legacy field
-    other_notes = Column(Text, nullable=True)  # Legacy field
 
     # Summary Calculations
     total_monthly_costs = Column(String, nullable=True)
@@ -281,7 +265,6 @@ class Contractor(Base):
     monthly_contractor_fixed_costs = Column(String, nullable=True)
     total_contractor_monthly_cost = Column(String, nullable=True)
     estimated_monthly_gp = Column(String, nullable=True)
-    contractor_total_fixed_costs = Column(String, nullable=True)  # Legacy field
 
     # Aventus Deal
     consultant = Column(String, nullable=True)
@@ -292,11 +275,9 @@ class Contractor(Base):
     # Invoice Details
     timesheet_required = Column(String, nullable=True)
     timesheet_approver_name = Column(String, nullable=True)
-    invoice_email = Column(String, nullable=True)  # Legacy
-    invoice_email1 = Column(String, nullable=True)  # NEW: Primary invoice email
+    invoice_email1 = Column(String, nullable=True)  # Primary invoice email
     invoice_email2 = Column(String, nullable=True)  # NEW: Secondary invoice email
-    client_contact = Column(String, nullable=True)  # Legacy
-    client_contact1 = Column(String, nullable=True)  # NEW: Primary client contact
+    client_contact1 = Column(String, nullable=True)  # Primary client contact
     client_contact2 = Column(String, nullable=True)  # NEW: Secondary client contact
     invoice_address_line1 = Column(String, nullable=True)
     invoice_address_line2 = Column(String, nullable=True)
@@ -341,6 +322,163 @@ class Contractor(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # ==========================================
+    # HYBRID PROPERTIES — backward-compat aliases for dropped legacy columns
+    # ==========================================
+    @hybrid_property
+    def home_address(self):
+        return self.address_line1
+
+    @home_address.setter
+    def home_address(self, value):
+        self.address_line1 = value
+
+    @hybrid_property
+    def registered_address(self):
+        return self.mgmt_address_line1
+
+    @registered_address.setter
+    def registered_address(self, value):
+        self.mgmt_address_line1 = value
+
+    @hybrid_property
+    def management_address_line2(self):
+        return self.mgmt_address_line2
+
+    @management_address_line2.setter
+    def management_address_line2(self, value):
+        self.mgmt_address_line2 = value
+
+    @hybrid_property
+    def management_address_line3(self):
+        return self.mgmt_address_line3
+
+    @management_address_line3.setter
+    def management_address_line3(self, value):
+        self.mgmt_address_line3 = value
+
+    @hybrid_property
+    def bank_name(self):
+        return self.mgmt_bank_name
+
+    @bank_name.setter
+    def bank_name(self, value):
+        self.mgmt_bank_name = value
+
+    @hybrid_property
+    def account_number(self):
+        return self.mgmt_account_number
+
+    @account_number.setter
+    def account_number(self, value):
+        self.mgmt_account_number = value
+
+    @hybrid_property
+    def iban_number(self):
+        return self.mgmt_iban_number
+
+    @iban_number.setter
+    def iban_number(self, value):
+        self.mgmt_iban_number = value
+
+    @hybrid_property
+    def invoice_email(self):
+        return self.invoice_email1
+
+    @invoice_email.setter
+    def invoice_email(self, value):
+        self.invoice_email1 = value
+
+    @hybrid_property
+    def client_contact(self):
+        return self.client_contact1
+
+    @client_contact.setter
+    def client_contact(self, value):
+        self.client_contact1 = value
+
+    @hybrid_property
+    def client_charge_rate(self):
+        return self.charge_rate_month
+
+    @client_charge_rate.setter
+    def client_charge_rate(self, value):
+        self.charge_rate_month = value
+
+    @hybrid_property
+    def candidate_pay_rate(self):
+        return self.gross_salary
+
+    @candidate_pay_rate.setter
+    def candidate_pay_rate(self, value):
+        self.gross_salary = value
+
+    @hybrid_property
+    def candidate_basic_salary(self):
+        return self.gross_salary
+
+    @candidate_basic_salary.setter
+    def candidate_basic_salary(self, value):
+        self.gross_salary = value
+
+    @hybrid_property
+    def contractor_costs(self):
+        return None  # Derivable, no canonical column
+
+    @hybrid_property
+    def contractor_total_fixed_costs(self):
+        return self.total_contractor_fixed_costs
+
+    @contractor_total_fixed_costs.setter
+    def contractor_total_fixed_costs(self, value):
+        self.total_contractor_fixed_costs = value
+
+    @hybrid_property
+    def laptop_provider(self):
+        return self.laptop_provided_by
+
+    @laptop_provider.setter
+    def laptop_provider(self, value):
+        self.laptop_provided_by = value
+
+    @hybrid_property
+    def other_notes(self):
+        return self.any_notes
+
+    @other_notes.setter
+    def other_notes(self, value):
+        self.any_notes = value
+
+    # ==========================================
+    # PROPERTIES — resolved from FK relationships (Phase 6)
+    # ==========================================
+    @property
+    def client_name(self):
+        try:
+            return self.client.company_name if self.client else None
+        except Exception:
+            return None
+
+    @client_name.setter
+    def client_name(self, value):
+        pass  # Derived from client relationship
+
+    @property
+    def consultant_name(self):
+        try:
+            return self.consultant_user.name if self.consultant_user else None
+        except Exception:
+            return None
+
+    @consultant_name.setter
+    def consultant_name(self, value):
+        pass  # Derived from consultant_user relationship
+
+    # FK-referenced relationships (for name resolution)
+    client = relationship("Client", foreign_keys=[client_id], lazy="select")
+    consultant_user = relationship("User", foreign_keys=[consultant_id], lazy="select")
+    third_party = relationship("ThirdParty", foreign_keys=[third_party_id], lazy="select")
+
     # Relationships (cascade delete to clean up related records when contractor is deleted)
     timesheets = relationship("Timesheet", back_populates="contractor", cascade="all, delete-orphan")
     contracts = relationship("Contract", back_populates="contractor", cascade="all, delete-orphan")
@@ -352,3 +490,36 @@ class Contractor(Base):
     offboarding_records = relationship("OffboardingRecord", back_populates="contractor", cascade="all, delete-orphan")
     contract_extensions = relationship("ContractExtension", back_populates="contractor", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="contractor", cascade="all, delete-orphan")
+    contractor_documents = relationship("ContractorDocument", back_populates="contractor", cascade="all, delete-orphan")
+
+    @property
+    def other_documents(self):
+        """Backward-compat property: serialize child docs as list of dicts."""
+        return [
+            {
+                "type": d.document_type,
+                "name": d.name,
+                "url": d.url,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+                "work_order_id": d.work_order_id,
+                "contract_id": d.contract_id,
+                "signed_by": d.signed_by,
+            }
+            for d in (self.contractor_documents or [])
+        ]
+
+
+class ContractorDocument(Base):
+    __tablename__ = "contractor_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    contractor_id = Column(String, ForeignKey("contractors.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_type = Column(String, nullable=True)
+    name = Column(String, nullable=True)
+    url = Column(String, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), nullable=True)
+    work_order_id = Column(String, nullable=True)
+    contract_id = Column(String, nullable=True)
+    signed_by = Column(String, nullable=True)
+
+    contractor = relationship("Contractor", back_populates="contractor_documents")

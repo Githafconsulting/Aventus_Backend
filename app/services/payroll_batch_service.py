@@ -37,7 +37,6 @@ def create_or_get_batch(
     db: Session,
     period: str,
     client_id: str,
-    client_name: str,
     route: str,
     third_party_id: Optional[str] = None,
     third_party_name: Optional[str] = None,
@@ -63,11 +62,9 @@ def create_or_get_batch(
     batch = PayrollBatch(
         period=period,
         client_id=client_id,
-        client_name=client_name,
         onboarding_route=route,
         route_label=_get_route_label(route, third_party_name),
         third_party_id=third_party_id,
-        third_party_name=third_party_name,
         currency=currency,
         status=BatchStatus.AWAITING_APPROVAL,
         tp_invoice_upload_token=str(uuid.uuid4()),
@@ -93,10 +90,6 @@ def assign_payroll_to_batch(db: Session, payroll_id: int) -> Optional[int]:
 
     route_value = contractor.onboarding_route.value if hasattr(contractor.onboarding_route, 'value') else str(contractor.onboarding_route)
 
-    # Get client name
-    client = db.query(Client).filter(Client.id == contractor.client_id).first()
-    client_name = client.company_name if client else (payroll.client_name or "Unknown")
-
     # Get third party info if applicable
     third_party_id = None
     third_party_name = None
@@ -110,7 +103,6 @@ def assign_payroll_to_batch(db: Session, payroll_id: int) -> Optional[int]:
         db=db,
         period=payroll.period,
         client_id=contractor.client_id,
-        client_name=client_name,
         route=route_value,
         third_party_id=third_party_id,
         third_party_name=third_party_name,

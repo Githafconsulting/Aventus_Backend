@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_quote_sheet_data'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = '9a7b2c3d4e5f'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

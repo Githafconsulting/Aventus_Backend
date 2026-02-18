@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile,
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.database import get_db
-from app.models.client import Client
+from app.models.client import Client, ClientDocument, ClientProject
 from app.models.contractor import Contractor
 from app.models.invoice import Invoice
 from app.models.proposal import Proposal
@@ -33,8 +33,23 @@ async def create_client(
             detail="A client company with this name already exists"
         )
 
-    client = Client(**client_data.model_dump())
+    data = client_data.model_dump()
+    projects_data = data.pop("projects", []) or []
+    client = Client(**data)
     db.add(client)
+    db.flush()
+
+    for p in projects_data:
+        proj = ClientProject(
+            client_id=client.id,
+            name=p.get("name", ""),
+            description=p.get("description"),
+            status=p.get("status", "Planning"),
+            third_party_id=p.get("third_party_id"),
+            third_party_name=p.get("third_party_name"),
+        )
+        db.add(proj)
+
     db.commit()
     db.refresh(client)
 
@@ -111,8 +126,25 @@ async def update_client(
 
     # Update fields
     update_data = client_data.model_dump(exclude_unset=True)
+    projects_data = update_data.pop("projects", None)
     for field, value in update_data.items():
         setattr(client, field, value)
+
+    # Replace projects if provided
+    if projects_data is not None:
+        for p in list(client.client_projects):
+            db.delete(p)
+        db.flush()
+        for p in projects_data:
+            proj = ClientProject(
+                client_id=client.id,
+                name=p.get("name", ""),
+                description=p.get("description"),
+                status=p.get("status", "Planning"),
+                third_party_id=p.get("third_party_id"),
+                third_party_name=p.get("third_party_name"),
+            )
+            db.add(proj)
 
     db.commit()
     db.refresh(client)
@@ -210,21 +242,16 @@ async def upload_client_document(
             detail=f"Failed to upload document: {str(e)}"
         )
 
-    # Get existing documents or initialize empty list
-    documents = client.documents if client.documents else []
-
-    # Add new document
-    documents.append({
-        "type": document_type,
-        "filename": file.filename,
-        "url": file_url,
-        "uploaded_at": datetime.utcnow().isoformat()
-    })
-
-    # Update client with new document
-    client.documents = documents
+    # Add document to child table
+    doc = ClientDocument(
+        client_id=client.id,
+        document_type=document_type,
+        filename=file.filename,
+        url=file_url,
+        uploaded_at=datetime.utcnow(),
+    )
+    db.add(doc)
     db.commit()
-    db.refresh(client)
 
     return {"message": "Document uploaded successfully", "url": file_url}
 
@@ -239,25 +266,20 @@ async def delete_client_document(
     """
     Delete a document from a client company (Consultant/Admin/Superadmin only)
     """
-    client = db.query(Client).filter(Client.id == client_id).first()
+    docs = (
+        db.query(ClientDocument)
+        .filter(ClientDocument.client_id == client_id)
+        .order_by(ClientDocument.id)
+        .all()
+    )
 
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Client company not found"
-        )
-
-    if not client.documents or document_index >= len(client.documents):
+    if document_index >= len(docs):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
         )
 
-    # Remove document from list
-    documents = client.documents
-    documents.pop(document_index)
-    client.documents = documents
-
+    db.delete(docs[document_index])
     db.commit()
 
     return None

@@ -76,7 +76,6 @@ class ClientInvoiceLineItem(Base):
     contractor_id = Column(String, ForeignKey("contractors.id"), nullable=True)
 
     # Display info
-    contractor_name = Column(String, nullable=True)
     description = Column(String, nullable=True)
 
     # Financials
@@ -86,6 +85,19 @@ class ClientInvoiceLineItem(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Properties — resolved from FK relationships (Phase 6)
+    @property
+    def contractor_name(self):
+        try:
+            c = self.contractor
+            return f"{c.first_name} {c.surname}" if c else None
+        except Exception:
+            return None
+
+    @contractor_name.setter
+    def contractor_name(self, value):
+        pass
 
     # Relationships
     client_invoice = relationship("ClientInvoice", back_populates="line_items")

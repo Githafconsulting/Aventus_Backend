@@ -50,7 +50,7 @@ class PayslipListResponse(BaseModel):
     id: int
     payroll_id: int
     contractor_id: str
-    contractor_name: str
+    contractor_name: Optional[str] = None
     contractor_email: Optional[str] = None
     client_name: Optional[str] = None
     document_number: str
@@ -74,7 +74,7 @@ class PayslipPortalResponse(BaseModel):
     period: str
     pdf_url: Optional[str] = None
     status: PayslipStatus
-    contractor_name: str
+    contractor_name: Optional[str] = None
     net_salary: Optional[float] = None
     currency: Optional[str] = None
     created_at: datetime
