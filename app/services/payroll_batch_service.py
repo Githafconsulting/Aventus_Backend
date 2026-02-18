@@ -163,7 +163,7 @@ def approve_all_payrolls_in_batch(db: Session, batch_id: int) -> dict:
     Approve all CALCULATED payrolls in a batch at once.
     Returns count of approved payrolls and resulting batch status.
     """
-    batch = db.query(PayrollBatch).filter(PayrollBatch.id == batch_id).first()
+    batch = db.query(PayrollBatch).filter(PayrollBatch.id == batch_id).with_for_update().first()
     if not batch:
         return {"error": "Batch not found"}
 
@@ -173,7 +173,7 @@ def approve_all_payrolls_in_batch(db: Session, batch_id: int) -> dict:
     payrolls = db.query(Payroll).filter(
         Payroll.batch_id == batch_id,
         Payroll.status == PayrollStatus.CALCULATED,
-    ).all()
+    ).with_for_update().all()
 
     if not payrolls:
         return {"error": "No payrolls in CALCULATED status to approve"}

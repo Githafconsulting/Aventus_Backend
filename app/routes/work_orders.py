@@ -23,14 +23,25 @@ router = APIRouter(prefix="/api/v1/work-orders", tags=["work-orders"])
 def generate_work_order_number(db: Session) -> str:
     """Generate unique work order number like WO-2024-001"""
     year = datetime.utcnow().year
+    prefix = f"WO-{year}-"
 
-    # Get the count of work orders created this year
-    count = db.query(WorkOrder).filter(
-        WorkOrder.work_order_number.like(f"WO-{year}-%")
-    ).count()
+    last = (
+        db.query(WorkOrder)
+        .filter(WorkOrder.work_order_number.like(f"{prefix}%"))
+        .order_by(WorkOrder.work_order_number.desc())
+        .with_for_update()
+        .first()
+    )
 
-    next_number = count + 1
-    return f"WO-{year}-{next_number:03d}"
+    if last:
+        try:
+            seq = int(last.work_order_number.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            seq = 1
+    else:
+        seq = 1
+
+    return f"{prefix}{seq:04d}"
 
 
 @router.post("/", response_model=WorkOrderResponse, status_code=status.HTTP_201_CREATED)

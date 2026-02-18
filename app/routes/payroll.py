@@ -473,17 +473,21 @@ def auto_calculate_payroll(timesheet_id: int, db: Session) -> Optional[int]:
     )
 
     db.add(payroll)
-    db.commit()
-    db.refresh(payroll)
+    db.flush()
 
     # Auto-assign to batch based on contractor's client/route
     try:
         from app.services.payroll_batch_service import assign_payroll_to_batch
         assign_payroll_to_batch(db, payroll.id)
-        db.commit()
     except Exception as e:
-        print(f"Warning: Could not assign payroll {payroll.id} to batch: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to assign payroll to batch: {e}"
+        )
 
+    db.commit()
+    db.refresh(payroll)
     return payroll.id
 
 

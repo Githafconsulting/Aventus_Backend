@@ -161,7 +161,7 @@ class Contractor(Base):
     approved_by = Column(String, nullable=True)  # User ID of admin/superadmin who approved
 
     # Consultant Tracking
-    consultant_id = Column(String, nullable=True)  # User ID of consultant who created
+    consultant_id = Column(String, ForeignKey("users.id"), nullable=True)  # User ID of consultant who created
     consultant_name = Column(String, nullable=True)
 
     # Costing Sheet Data (filled by consultant)
@@ -197,7 +197,7 @@ class Contractor(Base):
 
     # Management Company
     business_type = Column(String, nullable=True)  # "3RD Party", "Freelancer", "Aventus"
-    third_party_id = Column(String, nullable=True)  # ID of third party company if business_type is "3RD Party"
+    third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=True)  # ID of third party company if business_type is "3RD Party"
     umbrella_company_name = Column(String, nullable=True)
     registered_address = Column(String, nullable=True)
     management_address_line2 = Column(String, nullable=True)
@@ -221,7 +221,7 @@ class Contractor(Base):
     mgmt_swift_bic = Column(String, nullable=True)
 
     # Placement Details
-    client_id = Column(String, nullable=True)  # ID of the client company
+    client_id = Column(String, ForeignKey("clients.id"), nullable=True)  # ID of the client company
     client_name = Column(String, nullable=True)
     project_name = Column(String, nullable=True)
     role = Column(String, nullable=True)

@@ -78,7 +78,7 @@ class InvoiceRepository(BaseRepository[Invoice], IInvoiceRepository):
         # Find the highest number for this year (global, not per-client)
         last = self.db.query(Invoice).filter(
             Invoice.invoice_number.like(f"{prefix}%")
-        ).order_by(Invoice.invoice_number.desc()).first()
+        ).order_by(Invoice.invoice_number.desc()).with_for_update().first()
 
         if last:
             last_num = int(last.invoice_number.split("-")[-1])

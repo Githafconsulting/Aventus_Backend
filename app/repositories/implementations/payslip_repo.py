@@ -57,7 +57,7 @@ class PayslipRepository(BaseRepository[Payslip], IPayslipRepository):
         # Find the highest number for this year
         last = self.db.query(Payslip).filter(
             Payslip.document_number.like(f"{prefix}%")
-        ).order_by(Payslip.document_number.desc()).first()
+        ).order_by(Payslip.document_number.desc()).with_for_update().first()
 
         if last:
             # Extract number and increment

@@ -23,6 +23,7 @@ def _generate_invoice_number(db: Session) -> str:
         db.query(ClientInvoice)
         .filter(ClientInvoice.invoice_number.like(f"{prefix}%"))
         .order_by(ClientInvoice.invoice_number.desc())
+        .with_for_update()
         .first()
     )
 

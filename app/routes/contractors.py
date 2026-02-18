@@ -13,6 +13,7 @@ from app.models.third_party import ThirdParty
 from app.models.user import User, UserRole
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
 from app.models.work_order import WorkOrder, WorkOrderStatus
+from app.routes.work_orders import generate_work_order_number
 from app.models.client import Client
 from app.schemas.contractor import (
     ContractorResponse,
@@ -1569,8 +1570,7 @@ async def get_contractor_work_order(
         )
 
     # Generate preview work order number
-    work_order_count = db.query(WorkOrder).count()
-    preview_wo_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+    preview_wo_number = generate_work_order_number(db)
 
     # Format dates
     start_date_str = contractor.start_date if contractor.start_date else datetime.now().strftime("%Y-%m-%d")
@@ -1665,8 +1665,7 @@ async def get_contractor_work_order_pdf(
             )
 
         # Generate preview work order number
-        work_order_count = db.query(WorkOrder).count()
-        preview_wo_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+        preview_wo_number = generate_work_order_number(db)
 
         # Parse dates
         start_date = datetime.fromisoformat(contractor.start_date) if contractor.start_date else datetime.now()
@@ -1786,8 +1785,7 @@ async def approve_contractor_work_order(
             }
 
     # Generate work order number
-    work_order_count = db.query(WorkOrder).count()
-    work_order_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+    work_order_number = generate_work_order_number(db)
 
     # Generate unique signature token for client
     signature_token = generate_unique_token()
@@ -1912,8 +1910,7 @@ async def send_work_order_to_client_endpoint(
         )
 
     # Generate work order number
-    work_order_count = db.query(WorkOrder).count()
-    work_order_number = f"WO-{datetime.now().year}-{str(work_order_count + 1).zfill(4)}"
+    work_order_number = generate_work_order_number(db)
 
     # Generate unique signature token for client
     signature_token = generate_unique_token()
@@ -2348,7 +2345,8 @@ async def activate_contractor(
         db.refresh(contractor)
         db.refresh(user)
 
-        # Send activation email with credentials
+        # Send activation email with credentials (intentionally after commit —
+        # email is a non-fatal side effect; activation should not rollback if email fails)
         email_sent = False
         try:
             contractor_name = f"{contractor.first_name} {contractor.surname}"

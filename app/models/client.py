@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, JSON
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 import uuid
@@ -12,7 +12,7 @@ class Client(Base):
 
     # Company Information
     company_name = Column(String, nullable=False, unique=True, index=True)
-    third_party_id = Column(String, nullable=False)
+    third_party_id = Column(String, ForeignKey("third_parties.id"), nullable=False)
     industry = Column(String, nullable=True)
     company_reg_no = Column(String, nullable=True)
     company_vat_no = Column(String, nullable=True)

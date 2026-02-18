@@ -412,10 +412,9 @@ def counter_sign_contract(
     contract.aventus_signed_by = current_user.id
     contract.status = ContractStatus.SIGNED
 
-    db.commit()
-    db.refresh(contract)
+    db.flush()
 
-    # Generate signed contract PDF
+    # Generate signed contract PDF and commit everything in one transaction
     try:
         cds_data = contractor.cds_form_data or {}
         contractor_data = {
@@ -459,23 +458,28 @@ def counter_sign_contract(
         })
         contractor.other_documents = other_docs
         flag_modified(contractor, "other_documents")
-
-        db.commit()
-        print(f"Signed contract PDF saved to contractor documents: {pdf_url}")
-
-        # Email signed copy to contractor
-        try:
-            send_signed_contract_email(
-                contractor_email=contractor.email,
-                contractor_name=f"{contractor.first_name} {contractor.surname}",
-                pdf_url=pdf_url
-            )
-            print(f"Signed contract email sent to {contractor.email}")
-        except Exception as email_error:
-            print(f"Warning: Failed to send signed contract email: {email_error}")
-
     except Exception as pdf_error:
-        print(f"Warning: Failed to save signed contract PDF: {pdf_error}")
+        db.rollback()
+        print(f"Error: Failed to generate/upload signed contract PDF: {pdf_error}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate signed contract PDF. Contract was not signed."
+        )
+
+    # Single commit: signature + PDF URL saved atomically
+    db.commit()
+    db.refresh(contract)
+
+    # Email is a side effect — sent after commit (failure is non-fatal)
+    try:
+        send_signed_contract_email(
+            contractor_email=contractor.email,
+            contractor_name=f"{contractor.first_name} {contractor.surname}",
+            pdf_url=pdf_url
+        )
+        print(f"Signed contract email sent to {contractor.email}")
+    except Exception as email_error:
+        print(f"Warning: Failed to send signed contract email: {email_error}")
 
     return {
         "message": "Contract counter-signed successfully. Signed copy emailed to contractor.",
