@@ -11,6 +11,7 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-02-18
 """
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers
 revision = 'b3c4d5e6f7a8'
@@ -20,6 +21,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Clean up empty strings to NULL before adding FK constraints
+    conn = op.get_bind()
+    conn.execute(text("UPDATE contractors SET third_party_id = NULL WHERE third_party_id = ''"))
+    conn.execute(text("UPDATE contractors SET client_id = NULL WHERE client_id = ''"))
+    conn.execute(text("UPDATE contractors SET consultant_id = NULL WHERE consultant_id = ''"))
+
     # clients.third_party_id -> third_parties.id
     op.create_foreign_key(
         'fk_clients_third_party_id',
