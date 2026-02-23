@@ -618,6 +618,60 @@ async def get_contractor_by_document_token(
     return contractor
 
 
+@router.post("/{contractor_id}/documents/resend-upload-link")
+async def resend_document_upload_link(
+    contractor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["consultant", "admin", "superadmin"]))
+):
+    """
+    Resend the document upload link to a contractor.
+    Generates a new token with a fresh expiry period.
+    """
+    contractor = db.query(Contractor).filter(Contractor.id == contractor_id).first()
+
+    if not contractor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contractor not found"
+        )
+
+    if contractor.status not in [ContractorStatus.PENDING_DOCUMENTS, ContractorStatus.DOCUMENTS_UPLOADED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot resend upload link for contractor with status '{contractor.status.value}'"
+        )
+
+    # Generate new token and expiry
+    new_token = generate_unique_token()
+    new_expiry = datetime.now(timezone.utc) + timedelta(hours=settings.contract_token_expiry_hours)
+
+    contractor.document_upload_token = new_token
+    contractor.document_token_expiry = new_expiry
+
+    db.commit()
+    db.refresh(contractor)
+
+    # Send document upload email
+    contractor_name = f"{contractor.first_name} {contractor.surname}"
+
+    try:
+        send_document_upload_email(
+            contractor_email=contractor.email,
+            contractor_name=contractor_name,
+            upload_token=new_token,
+            expiry_date=new_expiry
+        )
+    except Exception as e:
+        pass
+
+    return {
+        "message": "Document upload link resent successfully",
+        "contractor_id": contractor.id,
+        "new_expiry": new_expiry.isoformat()
+    }
+
+
 @router.post("/upload-documents/{token}")
 async def upload_documents(
     token: str,
