@@ -95,7 +95,7 @@ class Client(Base):
                 "description": p.description,
                 "status": p.status,
                 "third_party_id": p.third_party_id,
-                "third_party_name": p.third_party_name,
+                "third_party_name": p.third_party.company_name if p.third_party else p.third_party_name,
             }
             for p in (self.client_projects or [])
         ]
@@ -128,3 +128,4 @@ class ClientProject(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     client = relationship("Client", back_populates="client_projects")
+    third_party = relationship("ThirdParty", foreign_keys=[third_party_id])
