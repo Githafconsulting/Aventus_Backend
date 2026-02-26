@@ -8,7 +8,7 @@ import uuid
 import json
 
 from app.database import get_db
-from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute
+from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute, ContractorTokens
 from app.models.third_party import ThirdParty
 from app.models.user import User, UserRole
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
@@ -559,7 +559,7 @@ async def get_contractor_by_token(
     Get contractor details by contract token (for signing portal)
     No authentication required - used by contractor to access contract
     """
-    contractor = db.query(Contractor).filter(Contractor.contract_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.contract_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -593,7 +593,7 @@ async def get_contractor_by_document_token(
     Get contractor details by document upload token (for document upload portal)
     No authentication required - used by contractor to upload documents
     """
-    contractor = db.query(Contractor).filter(Contractor.document_upload_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.document_upload_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -709,7 +709,7 @@ async def upload_documents(
     """
     from app.utils.storage import storage
 
-    contractor = db.query(Contractor).filter(Contractor.document_upload_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.document_upload_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -2184,7 +2184,7 @@ async def get_contract_pdf(
     Generate and return contract PDF for the given token
     No authentication required - used by contractor to view contract
     """
-    contractor = db.query(Contractor).filter(Contractor.contract_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.contract_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -2255,7 +2255,7 @@ async def sign_contract(
     """
     Contractor signs the contract
     """
-    contractor = db.query(Contractor).filter(Contractor.contract_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.contract_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -3087,8 +3087,8 @@ async def get_contract_upload_details(
     PUBLIC ENDPOINT: Get contractor details for contract upload page
     No authentication required
     """
-    contractor = db.query(Contractor).filter(
-        Contractor.contract_upload_token == upload_token
+    contractor = db.query(Contractor).join(ContractorTokens).filter(
+        ContractorTokens.contract_upload_token == upload_token
     ).first()
 
     if not contractor:
@@ -3135,8 +3135,8 @@ async def upload_contractor_contract(
     PUBLIC ENDPOINT: Client uploads contractor contract
     No authentication required
     """
-    contractor = db.query(Contractor).filter(
-        Contractor.contract_upload_token == upload_token
+    contractor = db.query(Contractor).join(ContractorTokens).filter(
+        ContractorTokens.contract_upload_token == upload_token
     ).first()
 
     if not contractor:
@@ -3344,8 +3344,8 @@ async def get_contract_for_signature(
     PUBLIC ENDPOINT: Contractor views contract for signing
     No authentication required
     """
-    contractor = db.query(Contractor).filter(
-        Contractor.contract_token == contract_token
+    contractor = db.query(Contractor).join(ContractorTokens).filter(
+        ContractorTokens.contract_token == contract_token
     ).first()
 
     if not contractor:
@@ -3395,8 +3395,8 @@ async def contractor_sign_contract(
     No authentication required
     After contractor signs, automatically adds superadmin signature
     """
-    contractor = db.query(Contractor).filter(
-        Contractor.contract_token == contract_token
+    contractor = db.query(Contractor).join(ContractorTokens).filter(
+        ContractorTokens.contract_token == contract_token
     ).first()
 
     if not contractor:
@@ -3999,7 +3999,7 @@ async def get_cohf_by_token(
     Public endpoint for 3rd party to view COHF form.
     No authentication required - uses token from email.
     """
-    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.cohf_token == cohf_token).first()
 
     if not contractor:
         raise HTTPException(
@@ -4054,7 +4054,7 @@ async def get_cohf_pdf_by_token(
     Public endpoint for 3rd party to view COHF PDF.
     No authentication required - uses token from email.
     """
-    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.cohf_token == cohf_token).first()
 
     if not contractor:
         raise HTTPException(
@@ -4135,7 +4135,7 @@ async def sign_cohf(
         "cohf_data": { ... any updated form data ... }
     }
     """
-    contractor = db.query(Contractor).filter(Contractor.cohf_token == cohf_token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.cohf_token == cohf_token).first()
 
     if not contractor:
         raise HTTPException(
@@ -4721,7 +4721,7 @@ async def get_quote_sheet_by_token(
     Get Quote Sheet form data by token (public endpoint for third parties).
     Returns contractor data and current quote sheet form data.
     """
-    contractor = db.query(Contractor).filter(Contractor.quote_sheet_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.quote_sheet_token == token).first()
 
     if not contractor:
         raise HTTPException(
@@ -4807,7 +4807,7 @@ async def submit_quote_sheet(
     Submit Quote Sheet form (public endpoint for third parties).
     Third party fills the form and submits.
     """
-    contractor = db.query(Contractor).filter(Contractor.quote_sheet_token == token).first()
+    contractor = db.query(Contractor).join(ContractorTokens).filter(ContractorTokens.quote_sheet_token == token).first()
 
     if not contractor:
         raise HTTPException(

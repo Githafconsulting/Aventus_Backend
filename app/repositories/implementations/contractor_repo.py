@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from app.repositories.implementations.base import BaseRepository
 from app.repositories.interfaces.contractor_repo import IContractorRepository
-from app.models.contractor import Contractor
+from app.models.contractor import Contractor, ContractorTokens
 from app.domain.contractor.value_objects import ContractorStatus, OnboardingRoute
 
 
@@ -36,7 +36,8 @@ class ContractorRepository(BaseRepository[Contractor], IContractorRepository):
         """Find contractor by document upload token."""
         return (
             self.db.query(Contractor)
-            .filter(Contractor.document_upload_token == token)
+            .join(ContractorTokens)
+            .filter(ContractorTokens.document_upload_token == token)
             .first()
         )
 
@@ -44,7 +45,8 @@ class ContractorRepository(BaseRepository[Contractor], IContractorRepository):
         """Find contractor by contract signing token."""
         return (
             self.db.query(Contractor)
-            .filter(Contractor.contract_token == token)
+            .join(ContractorTokens)
+            .filter(ContractorTokens.contract_token == token)
             .first()
         )
 
@@ -52,7 +54,8 @@ class ContractorRepository(BaseRepository[Contractor], IContractorRepository):
         """Find contractor by COHF token."""
         return (
             self.db.query(Contractor)
-            .filter(Contractor.cohf_token == token)
+            .join(ContractorTokens)
+            .filter(ContractorTokens.cohf_token == token)
             .first()
         )
 
@@ -154,15 +157,16 @@ class ContractorRepository(BaseRepository[Contractor], IContractorRepository):
 
         return (
             self.db.query(Contractor)
+            .join(ContractorTokens)
             .filter(
                 or_(
                     and_(
-                        Contractor.document_upload_token.isnot(None),
-                        Contractor.document_upload_token_expiry.between(now, expiry_threshold),
+                        ContractorTokens.document_upload_token.isnot(None),
+                        ContractorTokens.document_token_expiry.between(now, expiry_threshold),
                     ),
                     and_(
-                        Contractor.contract_token.isnot(None),
-                        Contractor.contract_token_expiry.between(now, expiry_threshold),
+                        ContractorTokens.contract_token.isnot(None),
+                        ContractorTokens.token_expiry.between(now, expiry_threshold),
                     ),
                 )
             )
