@@ -8,7 +8,7 @@ import uuid
 import json
 
 from app.database import get_db
-from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute, ContractorTokens
+from app.models.contractor import Contractor, ContractorStatus, OnboardingRoute, ContractorTokens, ContractorCohf, ContractorSignatures
 from app.models.third_party import ThirdParty
 from app.models.user import User, UserRole
 from app.models.quote_sheet import QuoteSheet, QuoteSheetStatus
@@ -198,14 +198,16 @@ async def list_contractors_summary(
         User.name.label("consultant_name"),
         Contractor.onboarding_route,
         Contractor.role,
-        Contractor.cohf_status,
-        Contractor.cohf_aventus_signed_date,
+        ContractorCohf.cohf_status,
+        ContractorSignatures.cohf_aventus_signed_date,
         Contractor.quote_sheet_status,
         Client.company_name.label("client_name"),
         Contractor.third_party_id,
         Contractor.photo_document
     ).outerjoin(User, Contractor.consultant_id == User.id
-    ).outerjoin(Client, Contractor.client_id == Client.id)
+    ).outerjoin(Client, Contractor.client_id == Client.id
+    ).outerjoin(ContractorCohf, ContractorCohf.contractor_id == Contractor.id
+    ).outerjoin(ContractorSignatures, ContractorSignatures.contractor_id == Contractor.id)
 
     if status_filter:
         query = query.filter(Contractor.status == status_filter)
