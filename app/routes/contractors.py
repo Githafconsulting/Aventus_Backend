@@ -4754,6 +4754,30 @@ async def get_quote_sheet_by_token(
         elif isinstance(contractor.quote_sheet_data, dict):
             quote_sheet_data = contractor.quote_sheet_data
 
+    # Collect contractor documents for the 3rd party to review
+    contractor_documents = []
+    doc_fields = {
+        "passport_document": "Passport",
+        "photo_document": "Photo",
+        "visa_page_document": "Visa Page",
+        "id_front_document": "ID Front",
+        "id_back_document": "ID Back",
+        "emirates_id_document": "Emirates ID",
+        "degree_document": "Degree / Certificate",
+    }
+    for field, label in doc_fields.items():
+        url = getattr(contractor, field, None)
+        if url:
+            contractor_documents.append({"label": label, "url": url})
+
+    # Include any additional uploaded documents
+    for doc in (contractor.contractor_documents or []):
+        if doc.url:
+            contractor_documents.append({
+                "label": doc.name or doc.document_type or "Document",
+                "url": doc.url,
+            })
+
     return {
         "contractor_id": str(contractor.id),
         "contractor_name": f"{contractor.first_name} {contractor.surname}",
@@ -4768,7 +4792,8 @@ async def get_quote_sheet_by_token(
         "end_date": contractor.end_date.isoformat() if contractor.end_date else None,
         "duration": contractor.duration,
         "quote_sheet_data": quote_sheet_data,
-        "quote_sheet_status": contractor.quote_sheet_status
+        "quote_sheet_status": contractor.quote_sheet_status,
+        "contractor_documents": contractor_documents,
     }
 
 

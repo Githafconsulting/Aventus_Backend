@@ -109,6 +109,7 @@ async def get_quote_sheet_by_token(
     # Get contractor data for pre-population
     contractor = quote_sheet.contractor
     contractor_data = {}
+    contractor_documents = []
     if contractor:
         contractor_data = {
             "employee_name": contractor.full_name,
@@ -119,13 +120,36 @@ async def get_quote_sheet_by_token(
             "num_children": str(contractor.num_children or 0),
         }
 
+        # Collect contractor documents for the 3rd party to review
+        doc_fields = {
+            "passport_document": "Passport",
+            "photo_document": "Photo",
+            "visa_page_document": "Visa Page",
+            "id_front_document": "ID Front",
+            "id_back_document": "ID Back",
+            "emirates_id_document": "Emirates ID",
+            "degree_document": "Degree / Certificate",
+        }
+        for field, label in doc_fields.items():
+            url = getattr(contractor, field, None)
+            if url:
+                contractor_documents.append({"label": label, "url": url})
+
+        for doc in (contractor.contractor_documents or []):
+            if doc.url:
+                contractor_documents.append({
+                    "label": doc.name or doc.document_type or "Document",
+                    "url": doc.url,
+                })
+
     return {
         "contractor_name": quote_sheet.contractor_name,
         "third_party_company_name": quote_sheet.third_party_company_name,
         "status": quote_sheet.status,
         "created_at": quote_sheet.created_at,
         "token_expiry": quote_sheet.token_expiry,
-        "contractor_data": contractor_data
+        "contractor_data": contractor_data,
+        "contractor_documents": contractor_documents,
     }
 
 
